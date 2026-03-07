@@ -1,0 +1,16 @@
+{
+  "version": "1.0",
+  "project": "OAE_Marketing",
+  "created": "2026-03-07",
+  "gsd": {
+    "commit_docs": true,
+    "mapper_model": "claude-sonnet-4-6",
+    "executor_model": "claude-sonnet-4-6",
+    "planner_model": "claude-sonnet-4-6"
+  },
+  "workflow": {
+    "auto_commit_phases": true,
+    "require_verification": true,
+    "parallel_execution": true
+  }
+}
