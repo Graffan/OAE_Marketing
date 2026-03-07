@@ -1,7 +1,8 @@
 import { db } from "./db.js";
 import { users, appSettings, titles, clips, campaigns, projects } from "@shared/schema.js";
-import { eq, count } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip } from "@shared/schema.js";
+import { eq, count, and, inArray } from "drizzle-orm";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser } from "@shared/schema.js";
+import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
   const result = await db
@@ -216,4 +217,189 @@ export async function getClipsByProject(projectId: number): Promise<Clip[]> {
     .from(clips)
     .where(eq(clips.projectId, projectId))
     .orderBy(clips.createdAt);
+}
+
+// ─── Clips (library queries) ──────────────────────────────────────────────────
+
+type ClipFilters = {
+  titleId?: number;
+  projectId?: number;
+  status?: string;
+  unpostedOnly?: boolean;
+};
+
+export async function getClips(filters: ClipFilters = {}): Promise<Clip[]> {
+  const conditions = [];
+
+  if (filters.titleId) conditions.push(eq(clips.titleId, filters.titleId));
+  if (filters.projectId) conditions.push(eq(clips.projectId, filters.projectId));
+  if (filters.status) conditions.push(eq(clips.status, filters.status));
+  if (filters.unpostedOnly) conditions.push(eq(clips.postedCount, 0));
+
+  const query = db.select().from(clips);
+  if (conditions.length > 0) {
+    return query.where(and(...conditions)).orderBy(clips.createdAt);
+  }
+  return query.orderBy(clips.createdAt);
+}
+
+export async function getClipById(id: number): Promise<Clip | undefined> {
+  const result = await db.select().from(clips).where(eq(clips.id, id)).limit(1);
+  return result[0];
+}
+
+export async function updateClip(
+  id: number,
+  data: Partial<Omit<Clip, "id" | "createdAt">>
+): Promise<Clip> {
+  const [updated] = await db
+    .update(clips)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(clips.id, id))
+    .returning();
+  return updated;
+}
+
+export async function approveClip(id: number, approverId: number): Promise<Clip> {
+  const [updated] = await db
+    .update(clips)
+    .set({
+      status: "approved",
+      approvedById: approverId,
+      approvedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(clips.id, id))
+    .returning();
+  return updated;
+}
+
+export async function rejectClip(id: number): Promise<Clip> {
+  const [updated] = await db
+    .update(clips)
+    .set({ status: "rejected", updatedAt: new Date() })
+    .where(eq(clips.id, id))
+    .returning();
+  return updated;
+}
+
+export async function bulkUpdateClips(
+  ids: number[],
+  data: { status?: string; isAvailable?: boolean }
+): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(clips)
+    .set({ ...data, updatedAt: new Date() })
+    .where(inArray(clips.id, ids));
+}
+
+export async function getClipRotationStats(projectId: number): Promise<{
+  totalApproved: number;
+  postedCount: number;
+  remainingInCycle: number;
+}> {
+  const allApproved = await db
+    .select()
+    .from(clips)
+    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")));
+
+  const totalApproved = allApproved.length;
+  const posted = allApproved.filter((c) => (c.postedCount ?? 0) > 0).length;
+  return {
+    totalApproved,
+    postedCount: posted,
+    remainingInCycle: totalApproved - posted,
+  };
+}
+
+// ─── Admin: User Management ───────────────────────────────────────────────────
+
+export async function getUsers(): Promise<Omit<User, "password">[]> {
+  const all = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: users.role,
+      isActive: users.isActive,
+      lastLoginAt: users.lastLoginAt,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    })
+    .from(users)
+    .orderBy(users.username);
+  return all;
+}
+
+export async function createUser(data: InsertUser): Promise<Omit<User, "password">> {
+  const hashed = await bcrypt.hash(data.password, 12);
+  const [created] = await db
+    .insert(users)
+    .values({ ...data, password: hashed })
+    .returning({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: users.role,
+      isActive: users.isActive,
+      lastLoginAt: users.lastLoginAt,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    });
+  return created;
+}
+
+export async function adminUpdateUser(
+  id: number,
+  data: { role?: string; isActive?: boolean; firstName?: string; lastName?: string; email?: string }
+): Promise<Omit<User, "password">> {
+  const [updated] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(users.id, id))
+    .returning({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: users.role,
+      isActive: users.isActive,
+      lastLoginAt: users.lastLoginAt,
+      createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+    });
+  return updated;
+}
+
+export async function resetUserPassword(id: number, newPassword: string): Promise<void> {
+  const hashed = await bcrypt.hash(newPassword, 12);
+  await db
+    .update(users)
+    .set({ password: hashed, updatedAt: new Date() })
+    .where(eq(users.id, id));
+}
+
+// ─── Admin: App Settings ──────────────────────────────────────────────────────
+
+export async function getFullAppSettings(): Promise<AppSettings | null> {
+  // Returns full settings including API keys — for admin use only
+  const result = await db.select().from(appSettings).where(eq(appSettings.id, 1)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function updateAppSettings(
+  data: Partial<Omit<AppSettings, "id" | "updatedAt">>
+): Promise<AppSettings> {
+  const [updated] = await db
+    .update(appSettings)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(appSettings.id, 1))
+    .returning();
+  return updated;
 }

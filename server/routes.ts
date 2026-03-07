@@ -22,6 +22,19 @@ import {
   updateProject,
   deleteProject,
   getClipsByProject,
+  getClips,
+  getClipById,
+  updateClip,
+  approveClip,
+  rejectClip,
+  bulkUpdateClips,
+  getClipRotationStats,
+  getUsers,
+  createUser,
+  adminUpdateUser,
+  resetUserPassword,
+  getFullAppSettings,
+  updateAppSettings,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -405,6 +418,271 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       });
 
       res.json({ status: "started", message: "Sync started" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Clips routes ────────────────────────────────────────────────────────────
+
+  // POST /api/clips/bulk-approve — requireReviewer
+  // MUST be registered BEFORE /api/clips/:id to avoid Express matching "bulk-approve" as :id
+  app.post("/api/clips/bulk-approve", requireReviewer, async (req, res) => {
+    try {
+      const { ids } = req.body as { ids: number[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids array is required and must not be empty" });
+      }
+      const user = req.user as any;
+      await Promise.all(ids.map((id) => approveClip(id, user.id)));
+      res.json({ message: `${ids.length} clips approved`, count: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/clips/bulk-archive — requireOperator
+  // MUST be registered BEFORE /api/clips/:id
+  app.post("/api/clips/bulk-archive", requireOperator, async (req, res) => {
+    try {
+      const { ids } = req.body as { ids: number[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ message: "ids array is required and must not be empty" });
+      }
+      await bulkUpdateClips(ids, { status: "archived" });
+      res.json({ message: `${ids.length} clips archived`, count: ids.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/clips — requireAuth
+  // Query params: titleId, projectId, status, unpostedOnly=true
+  app.get("/api/clips", requireAuth, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.titleId) filters.titleId = parseInt(req.query.titleId as string);
+      if (req.query.projectId) filters.projectId = parseInt(req.query.projectId as string);
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.unpostedOnly === "true") filters.unpostedOnly = true;
+      const result = await getClips(filters);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/clips/rotation-stats — requireAuth
+  // Query param: projectId
+  app.get("/api/clips/rotation-stats", requireAuth, async (req, res) => {
+    try {
+      const projectId = req.query.projectId ? parseInt(req.query.projectId as string) : null;
+      if (!projectId) return res.status(400).json({ message: "projectId query param is required" });
+      const stats = await getClipRotationStats(projectId);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/clips/:id — requireAuth
+  app.get("/api/clips/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clip = await getClipById(id);
+      if (!clip) return res.status(404).json({ message: "Clip not found" });
+      res.json(clip);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/clips/:id — requireOperator
+  app.put("/api/clips/:id", requireOperator, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getClipById(id);
+      if (!existing) return res.status(404).json({ message: "Clip not found" });
+
+      // Disallow changing dropbox-managed fields via PUT
+      const {
+        dropboxFileId: _a,
+        dropboxPath: _b,
+        projectId: _c,
+        titleId: _d,
+        createdAt: _e,
+        id: _f,
+        ...updatable
+      } = req.body;
+
+      const updated = await updateClip(id, updatable);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/clips/:id/approve — requireReviewer
+  app.post("/api/clips/:id/approve", requireReviewer, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const user = req.user as any;
+      const clip = await getClipById(id);
+      if (!clip) return res.status(404).json({ message: "Clip not found" });
+      const updated = await approveClip(id, user.id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/clips/:id/reject — requireReviewer
+  app.post("/api/clips/:id/reject", requireReviewer, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clip = await getClipById(id);
+      if (!clip) return res.status(404).json({ message: "Clip not found" });
+      const updated = await rejectClip(id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ============= ADMIN ROUTES =============
+
+  // GET /api/admin/users — requireAdmin
+  app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+    try {
+      const all = await getUsers();
+      res.json(all);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/users — requireAdmin
+  app.post("/api/admin/users", requireAdmin, async (req, res) => {
+    try {
+      // Check username uniqueness
+      const existing = await getUserByUsername(req.body.username);
+      if (existing) return res.status(409).json({ message: "Username already taken" });
+
+      // Validate role
+      const { ROLES } = await import("@shared/schema.js");
+      if (!(ROLES as readonly string[]).includes(req.body.role)) {
+        return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
+      }
+
+      const user = await createUser(req.body);
+      res.status(201).json(user);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/admin/users/:id — requireAdmin
+  app.put("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getUserById(id);
+      if (!existing) return res.status(404).json({ message: "User not found" });
+
+      // Prevent admin from deactivating themselves
+      const currentUser = req.user as any;
+      if (currentUser.id === id && req.body.isActive === false) {
+        return res.status(400).json({ message: "Cannot deactivate your own account" });
+      }
+
+      // Validate role if being changed
+      if (req.body.role) {
+        const { ROLES } = await import("@shared/schema.js");
+        if (!(ROLES as readonly string[]).includes(req.body.role)) {
+          return res.status(400).json({ message: `Invalid role. Must be one of: ${ROLES.join(", ")}` });
+        }
+      }
+
+      const { password: _p, username: _u, ...updatable } = req.body;
+      const updated = await adminUpdateUser(id, updatable);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/admin/users/:id/reset-password — requireAdmin
+  app.post("/api/admin/users/:id/reset-password", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getUserById(id);
+      if (!existing) return res.status(404).json({ message: "User not found" });
+
+      const { newPassword } = req.body;
+      if (!newPassword || newPassword.length < 8) {
+        return res.status(400).json({ message: "New password must be at least 8 characters" });
+      }
+
+      await resetUserPassword(id, newPassword);
+      res.json({ message: "Password reset successfully" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/admin/settings — requireAdmin (includes masked API keys)
+  app.get("/api/admin/settings", requireAdmin, async (_req, res) => {
+    try {
+      const settings = await getFullAppSettings();
+      if (!settings) return res.status(404).json({ message: "Settings not found" });
+      // Mask API keys: return "•••••••••••••••••" if set, empty string if not
+      const masked = {
+        ...settings,
+        claudeApiKey: settings.claudeApiKey ? "•••••••••••••••••" : "",
+        openaiApiKey: settings.openaiApiKey ? "•••••••••••••••••" : "",
+        deepseekApiKey: settings.deepseekApiKey ? "•••••••••••••••••" : "",
+        omdbApiKey: settings.omdbApiKey ? "•••••••••••••••••" : "",
+        smtpPassword: settings.smtpPassword ? "•••••••••••••••••" : "",
+      };
+      // Also return boolean flags for "is configured" checks
+      const enriched = {
+        ...masked,
+        claudeConfigured: !!settings.claudeApiKey,
+        openaiConfigured: !!settings.openaiApiKey,
+        deepseekConfigured: !!settings.deepseekApiKey,
+        omdbConfigured: !!settings.omdbApiKey,
+      };
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/admin/settings — requireAdmin
+  app.put("/api/admin/settings", requireAdmin, async (req, res) => {
+    try {
+      // If a masked value is sent (all bullet chars), skip updating that field
+      const MASK_PATTERN = /^•+$/;
+      const clean: any = {};
+      for (const [key, value] of Object.entries(req.body)) {
+        if (typeof value === "string" && MASK_PATTERN.test(value)) {
+          // Skip — user didn't change this API key
+          continue;
+        }
+        clean[key] = value;
+      }
+
+      // Remove read-only fields
+      delete clean.id;
+      delete clean.updatedAt;
+      delete clean.claudeConfigured;
+      delete clean.openaiConfigured;
+      delete clean.deepseekConfigured;
+      delete clean.omdbConfigured;
+
+      const updated = await updateAppSettings(clean);
+      // Return safe version (mask keys in response)
+      const { claudeApiKey: _c, openaiApiKey: _o, deepseekApiKey: _d, omdbApiKey: _omdb, smtpPassword: _sp, ...safe } = updated;
+      res.json(safe);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

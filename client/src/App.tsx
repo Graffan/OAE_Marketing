@@ -8,6 +8,8 @@ import TitlesPage from "@/pages/TitlesPage";
 import TitleDetailPage from "@/pages/TitleDetailPage";
 import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
+import AdminPage from "@/pages/AdminPage";
+import ClipLibraryPage from "@/pages/ClipLibraryPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -168,7 +170,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar />
-      <main className="flex-1 overflow-auto">{children}</main>
+      <main className="flex-1 overflow-auto min-h-0">{children}</main>
     </div>
   );
 }
@@ -206,12 +208,12 @@ export default function App() {
             <Route path="/titles/:id" component={TitleDetailPage} />
             <Route path="/projects" component={ProjectsPage} />
             <Route path="/projects/:id" component={ProjectDetailPage} />
-            <Route path="/clips"        component={() => <PlaceholderPage title="Clip Library" />} />
+            <Route path="/clips"        component={ClipLibraryPage} />
             <Route path="/campaigns"    component={() => <PlaceholderPage title="Campaigns" />} />
             <Route path="/destinations" component={() => <PlaceholderPage title="Destinations" />} />
             <Route path="/ai-studio"    component={() => <PlaceholderPage title="AI Studio" />} />
             <Route path="/analytics"    component={() => <PlaceholderPage title="Analytics" />} />
-            <Route path="/admin"        component={() => <PlaceholderPage title="Admin" />} />
+            <Route path="/admin"        component={AdminPage} />
             <Route>
               <div className="flex h-screen items-center justify-center">
                 <div className="text-center">

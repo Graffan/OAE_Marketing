@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { fetchJSON } from "@/lib/queryClient";
+import { fetchJSON, apiRequest } from "@/lib/queryClient";
 import type { AppSettings } from "@shared/schema";
 
 type PublicSettings = Omit<AppSettings, "claudeApiKey" | "openaiApiKey" | "deepseekApiKey" | "omdbApiKey" | "smtpPassword">;
@@ -20,4 +20,13 @@ export function useSettings() {
   }, [settings?.accentColor]);
 
   return { settings, isLoading };
+}
+
+export function useUpdateSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Partial<AppSettings>) =>
+      apiRequest("PUT", "/api/admin/settings", data).then((r) => r.json()),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/settings"] }),
+  });
 }
