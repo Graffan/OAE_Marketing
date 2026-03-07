@@ -4,6 +4,10 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { useSettings } from "@/hooks/useSettings";
 import { LoginPage } from "@/pages/LoginPage";
+import TitlesPage from "@/pages/TitlesPage";
+import TitleDetailPage from "@/pages/TitleDetailPage";
+import ProjectsPage from "@/pages/ProjectsPage";
+import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -198,7 +202,10 @@ export default function App() {
         <AuthGuard>
           <Switch>
             <Route path="/"             component={() => <PlaceholderPage title="Dashboard" />} />
-            <Route path="/titles"       component={() => <PlaceholderPage title="Titles" />} />
+            <Route path="/titles" component={TitlesPage} />
+            <Route path="/titles/:id" component={TitleDetailPage} />
+            <Route path="/projects" component={ProjectsPage} />
+            <Route path="/projects/:id" component={ProjectDetailPage} />
             <Route path="/clips"        component={() => <PlaceholderPage title="Clip Library" />} />
             <Route path="/campaigns"    component={() => <PlaceholderPage title="Campaigns" />} />
             <Route path="/destinations" component={() => <PlaceholderPage title="Destinations" />} />
