@@ -9,7 +9,7 @@
 ## Status
 
 **Phase 1:** Complete
-**Phase 2:** In progress — Plans 01 (Destinations) + 02 (Smart Links) complete; Plans 03+ pending
+**Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
 **Phase 4:** Not started
 **Phase 5:** Not started
@@ -31,7 +31,18 @@
 
 ## What's Next
 
-Phase 2 Plan 02 (Smart Links) complete. Run `/gsd:plan-phase 2` for Plan 03 or proceed with the next plan in phase 2.
+Phase 2 fully complete. Run `/gsd:plan-phase 3` to begin Phase 3 (Campaigns).
+
+---
+
+## Phase 2 Deliverables (complete)
+
+- Regional destinations CRUD with expiry tracking (`/destinations`)
+- Smart links with IP geo-resolve redirect at `/l/:slug` (`/smart-links`)
+- Combined alerts endpoint `GET /api/alerts/destinations`
+- `ExpiryAlerts` component (compact + full/dismissible modes)
+- `DashboardPage` at `/` with 4 stat cards (Titles, Clips, Expiring Links, Smart Links)
+- All sidebar nav entries wired with role gating
 
 ---
 
