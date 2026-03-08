@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents } from "@shared/schema.js";
-import { eq, count, and, inArray, lte, gte, isNotNull, sql } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts } from "@shared/schema.js";
+import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc } from "drizzle-orm";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost } from "@shared/schema.js";
 import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -585,4 +585,211 @@ export async function resolveDestinationForCountry(
     .orderBy(sql`${regionalDestinations.campaignPriority} DESC`)
     .limit(1);
   return result[0];
+}
+
+// ─── Clip Rotation Engine ─────────────────────────────────────────────────────
+
+export interface EngagementMetrics {
+  likes?: number | null;
+  comments?: number | null;
+  shares?: number | null;
+  saves?: number | null;
+  plays?: number | null;
+  clickThroughs?: number | null;
+  impressions?: number | null;
+}
+
+export function computeEngagementScore(metrics: EngagementMetrics): number {
+  const likes = metrics.likes ?? 0;
+  const comments = metrics.comments ?? 0;
+  const shares = metrics.shares ?? 0;
+  const saves = metrics.saves ?? 0;
+  const plays = metrics.plays ?? 0;
+  const clickThroughs = metrics.clickThroughs ?? 0;
+  const impressions = Math.max(metrics.impressions ?? 0, 1);
+  const score =
+    (likes * 3 + comments * 4 + shares * 5 + saves * 4 + plays * 1 + clickThroughs * 6) /
+    impressions;
+  return Math.round(score * 10000) / 10000;
+}
+
+export async function createClipPost(data: {
+  clipId: number;
+  platform?: string;
+  region?: string;
+  caption?: string;
+  cta?: string;
+  smartLinkId?: number;
+  postedById?: number;
+  postedAt?: Date;
+}): Promise<ClipPost> {
+  const postedAt = data.postedAt ?? new Date();
+
+  const [clipPost] = await db
+    .insert(clipPosts)
+    .values({
+      clipId: data.clipId,
+      platform: data.platform,
+      region: data.region,
+      captionUsed: data.caption,
+      ctaUsed: data.cta,
+      smartLinkId: data.smartLinkId,
+      postedById: data.postedById,
+      postedAt,
+    })
+    .returning();
+
+  await db
+    .update(clips)
+    .set({
+      postedCount: sql`${clips.postedCount} + 1`,
+      lastPostedAt: postedAt,
+      updatedAt: new Date(),
+    })
+    .where(eq(clips.id, data.clipId));
+
+  // Recompute engagement score from all posts for this clip
+  const allPosts = await db.select().from(clipPosts).where(eq(clipPosts.clipId, data.clipId));
+  if (allPosts.length > 0) {
+    const newScore = computeEngagementScore({
+      likes: allPosts.reduce((s, p) => s + (p.likes ?? 0), 0),
+      comments: allPosts.reduce((s, p) => s + (p.comments ?? 0), 0),
+      shares: allPosts.reduce((s, p) => s + (p.shares ?? 0), 0),
+      saves: allPosts.reduce((s, p) => s + (p.saves ?? 0), 0),
+      plays: allPosts.reduce((s, p) => s + (p.plays ?? 0), 0),
+      clickThroughs: allPosts.reduce((s, p) => s + (p.clickThroughs ?? 0), 0),
+      impressions: allPosts.reduce((s, p) => s + (p.impressions ?? 0), 0),
+    });
+    await db
+      .update(clips)
+      .set({ engagementScore: newScore.toString() })
+      .where(eq(clips.id, data.clipId));
+  }
+
+  return clipPost;
+}
+
+export async function getClipPosts(clipId: number): Promise<ClipPost[]> {
+  return db
+    .select()
+    .from(clipPosts)
+    .where(eq(clipPosts.clipId, clipId))
+    .orderBy(desc(clipPosts.postedAt));
+}
+
+export async function getLastPostForClip(clipId: number): Promise<ClipPost | null> {
+  const result = await db
+    .select()
+    .from(clipPosts)
+    .where(eq(clipPosts.clipId, clipId))
+    .orderBy(desc(clipPosts.postedAt))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export interface DuplicateWarning {
+  lastPostedAt: Date;
+  platform: string;
+  region: string;
+  daysSince: number;
+}
+
+export async function getDuplicateWarning(
+  clipId: number,
+  platform: string,
+  region: string
+): Promise<DuplicateWarning | null> {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const result = await db
+    .select()
+    .from(clipPosts)
+    .where(
+      and(
+        eq(clipPosts.clipId, clipId),
+        eq(clipPosts.platform, platform),
+        eq(clipPosts.region, region),
+        sql`${clipPosts.postedAt} >= ${thirtyDaysAgo.toISOString()}`
+      )
+    )
+    .orderBy(desc(clipPosts.postedAt))
+    .limit(1);
+
+  if (!result[0]?.postedAt) return null;
+  const daysSince = Math.floor(
+    (Date.now() - result[0].postedAt.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  return {
+    lastPostedAt: result[0].postedAt,
+    platform: result[0].platform ?? platform,
+    region: result[0].region ?? region,
+    daysSince,
+  };
+}
+
+export interface RotationStats {
+  totalApproved: number;
+  totalPosted: number;
+  totalUnposted: number;
+  isPoolExhausted: boolean;
+  lastResetAt: Date | null;
+}
+
+export async function getRotationStats(projectId: number): Promise<RotationStats> {
+  const allApproved = await db
+    .select()
+    .from(clips)
+    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")));
+
+  const totalApproved = allApproved.length;
+  const totalPosted = allApproved.filter((c) => (c.postedCount ?? 0) > 0).length;
+  const totalUnposted = totalApproved - totalPosted;
+  return {
+    totalApproved,
+    totalPosted,
+    totalUnposted,
+    isPoolExhausted: totalApproved > 0 && totalUnposted === 0,
+    lastResetAt: null,
+  };
+}
+
+export async function resetRotationCycle(projectId: number): Promise<void> {
+  await db
+    .update(clips)
+    .set({ postedCount: 0, lastPostedAt: null, updatedAt: new Date() })
+    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")));
+}
+
+export async function pickNextClip(projectId: number): Promise<Clip | null> {
+  const unposted = await db
+    .select()
+    .from(clips)
+    .where(
+      and(eq(clips.projectId, projectId), eq(clips.status, "approved"), eq(clips.postedCount, 0))
+    )
+    .orderBy(desc(clips.engagementScore))
+    .limit(1);
+
+  if (unposted[0]) return unposted[0];
+
+  // Pool exhausted — check if there are any approved clips at all
+  const anyApproved = await db
+    .select()
+    .from(clips)
+    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")))
+    .limit(1);
+
+  if (anyApproved.length === 0) return null;
+
+  await resetRotationCycle(projectId);
+
+  const afterReset = await db
+    .select()
+    .from(clips)
+    .where(
+      and(eq(clips.projectId, projectId), eq(clips.status, "approved"), eq(clips.postedCount, 0))
+    )
+    .orderBy(desc(clips.engagementScore))
+    .limit(1);
+
+  return afterReset[0] ?? null;
 }

@@ -50,6 +50,12 @@ import {
   deleteSmartLink,
   recordSmartLinkClick,
   resolveDestinationForCountry,
+  getClipPosts,
+  getDuplicateWarning,
+  createClipPost,
+  getRotationStats,
+  resetRotationCycle,
+  pickNextClip,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -964,6 +970,80 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       if (!existing) return res.status(404).json({ message: "Smart link not found" });
       await deleteSmartLink(id);
       res.json({ message: "Smart link deleted" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Clip Rotation Engine ────────────────────────────────────────────────────
+  // IMPORTANT: sub-routes registered BEFORE wildcard /:id routes
+
+  app.get("/api/clips/:id/post-history", requireAuth, async (req, res) => {
+    try {
+      const clipId = parseInt(req.params.id);
+      const posts = await getClipPosts(clipId);
+      res.json({ clipId, posts });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/clips/:id/duplicate-warning", requireAuth, async (req, res) => {
+    try {
+      const clipId = parseInt(req.params.id);
+      const { platform, region } = req.query as { platform?: string; region?: string };
+      if (!platform || !region) {
+        return res.status(400).json({ message: "platform and region query params required" });
+      }
+      const warning = await getDuplicateWarning(clipId, platform, region);
+      res.json(warning);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/clips/:id/mark-posted", requireOperator, async (req, res) => {
+    try {
+      const clipId = parseInt(req.params.id);
+      const { platform, region, caption, cta, smartLinkId, postedAt } = req.body;
+      if (!platform || !region) {
+        return res.status(400).json({ message: "platform and region are required" });
+      }
+      const clipPost = await createClipPost({
+        clipId,
+        platform,
+        region,
+        caption,
+        cta,
+        smartLinkId: smartLinkId ? parseInt(smartLinkId) : undefined,
+        postedById: (req.user as any)?.id,
+        postedAt: postedAt ? new Date(postedAt) : undefined,
+      });
+      const updatedClip = await getClipById(clipId);
+      res.json({ clipPost, clip: updatedClip });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/projects/:id/rotation", requireAuth, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      const [stats, nextClip] = await Promise.all([
+        getRotationStats(projectId),
+        pickNextClip(projectId),
+      ]);
+      res.json({ stats, nextClip });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/projects/:id/rotation/reset", requireAdmin, async (req, res) => {
+    try {
+      const projectId = parseInt(req.params.id);
+      await resetRotationCycle(projectId);
+      res.json({ success: true, message: "Rotation cycle reset" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
