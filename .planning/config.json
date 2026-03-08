@@ -11,6 +11,7 @@
   "workflow": {
     "auto_commit_phases": true,
     "require_verification": true,
-    "parallel_execution": true
+    "parallel_execution": true,
+    "_auto_chain_active": false
   }
 }

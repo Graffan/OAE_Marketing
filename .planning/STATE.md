@@ -9,7 +9,7 @@
 ## Status
 
 **Phase 1:** Complete
-**Phase 2:** In progress — Plan 01 (Destinations) complete; Plans 02+ pending
+**Phase 2:** In progress — Plans 01 (Destinations) + 02 (Smart Links) complete; Plans 03+ pending
 **Phase 3:** Not started
 **Phase 4:** Not started
 **Phase 5:** Not started
@@ -31,7 +31,7 @@
 
 ## What's Next
 
-Run `/gsd:plan-phase 1` to create a detailed Phase 1 implementation plan.
+Phase 2 Plan 02 (Smart Links) complete. Run `/gsd:plan-phase 2` for Plan 03 or proceed with the next plan in phase 2.
 
 ---
 
