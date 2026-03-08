@@ -10,6 +10,7 @@ import ProjectsPage from "@/pages/ProjectsPage";
 import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import AdminPage from "@/pages/AdminPage";
 import ClipLibraryPage from "@/pages/ClipLibraryPage";
+import DestinationsPage from "@/pages/DestinationsPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -210,7 +211,7 @@ export default function App() {
             <Route path="/projects/:id" component={ProjectDetailPage} />
             <Route path="/clips"        component={ClipLibraryPage} />
             <Route path="/campaigns"    component={() => <PlaceholderPage title="Campaigns" />} />
-            <Route path="/destinations" component={() => <PlaceholderPage title="Destinations" />} />
+            <Route path="/destinations" component={DestinationsPage} />
             <Route path="/ai-studio"    component={() => <PlaceholderPage title="AI Studio" />} />
             <Route path="/analytics"    component={() => <PlaceholderPage title="Analytics" />} />
             <Route path="/admin"        component={AdminPage} />
