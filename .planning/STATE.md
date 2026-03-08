@@ -1,15 +1,15 @@
 # OAE_Marketing — Project State
 
 **Last Updated:** 2026-03-07
-**Current Milestone:** v1.0 (pre-development)
-**Current Phase:** None — ready to begin Phase 1
+**Current Milestone:** v1.0
+**Current Phase:** Phase 2 — Destinations & Smart Links
 
 ---
 
 ## Status
 
-**Phase 1:** Not started
-**Phase 2:** Not started
+**Phase 1:** Complete
+**Phase 2:** In progress — Plan 01 (Destinations) complete; Plans 02+ pending
 **Phase 3:** Not started
 **Phase 4:** Not started
 **Phase 5:** Not started
