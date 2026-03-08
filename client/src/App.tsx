@@ -12,6 +12,7 @@ import AdminPage from "@/pages/AdminPage";
 import ClipLibraryPage from "@/pages/ClipLibraryPage";
 import DestinationsPage from "@/pages/DestinationsPage";
 import SmartLinksPage from "@/pages/SmartLinksPage";
+import DashboardPage from "@/pages/DashboardPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -207,7 +208,7 @@ export default function App() {
       <Route>
         <AuthGuard>
           <Switch>
-            <Route path="/"             component={() => <PlaceholderPage title="Dashboard" />} />
+            <Route path="/"             component={DashboardPage} />
             <Route path="/titles" component={TitlesPage} />
             <Route path="/titles/:id" component={TitleDetailPage} />
             <Route path="/projects" component={ProjectsPage} />
