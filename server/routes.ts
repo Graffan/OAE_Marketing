@@ -35,6 +35,13 @@ import {
   resetUserPassword,
   getFullAppSettings,
   updateAppSettings,
+  getDestinations,
+  getDestinationById,
+  createDestination,
+  updateDestination,
+  deleteDestination,
+  getExpiringDestinations,
+  getTitlesWithNoActiveDestinations,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -683,6 +690,92 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       // Return safe version (mask keys in response)
       const { claudeApiKey: _c, openaiApiKey: _o, deepseekApiKey: _d, omdbApiKey: _omdb, smtpPassword: _sp, ...safe } = updated;
       res.json(safe);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Destinations routes ─────────────────────────────────────────────────────
+
+  // GET /api/destinations/expiring — requireAuth
+  // MUST be registered BEFORE /api/destinations/:id
+  app.get("/api/destinations/expiring", requireAuth, async (_req, res) => {
+    try {
+      const results = await getExpiringDestinations(30);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/destinations — requireAuth, optional ?titleId= filter
+  app.get("/api/destinations", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId ? parseInt(req.query.titleId as string) : undefined;
+      const results = await getDestinations(titleId);
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/destinations/:id — requireAuth
+  app.get("/api/destinations/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const dest = await getDestinationById(id);
+      if (!dest) return res.status(404).json({ message: "Destination not found" });
+      res.json(dest);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/destinations — requireOperator
+  app.post("/api/destinations", requireOperator, async (req, res) => {
+    try {
+      const { countryCode, platformName, destinationUrl, titleId } = req.body;
+      if (!countryCode || countryCode.length !== 2) {
+        return res.status(400).json({ message: "countryCode must be a 2-character ISO code" });
+      }
+      if (!platformName) return res.status(400).json({ message: "platformName is required" });
+      if (!destinationUrl) return res.status(400).json({ message: "destinationUrl is required" });
+      if (!titleId) return res.status(400).json({ message: "titleId is required" });
+      const created = await createDestination({
+        ...req.body,
+        countryCode: (countryCode as string).toUpperCase(),
+      });
+      res.status(201).json(created);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // PUT /api/destinations/:id — requireOperator
+  app.put("/api/destinations/:id", requireOperator, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getDestinationById(id);
+      if (!existing) return res.status(404).json({ message: "Destination not found" });
+      const { id: _id, createdAt: _c, updatedAt: _u, ...updatable } = req.body;
+      if (updatable.countryCode) {
+        updatable.countryCode = (updatable.countryCode as string).toUpperCase();
+      }
+      const updated = await updateDestination(id, updatable);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // DELETE /api/destinations/:id — requireAdmin
+  app.delete("/api/destinations/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getDestinationById(id);
+      if (!existing) return res.status(404).json({ message: "Destination not found" });
+      await deleteDestination(id);
+      res.json({ message: "Destination deleted" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

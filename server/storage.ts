@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects } from "@shared/schema.js";
-import { eq, count, and, inArray } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations } from "@shared/schema.js";
+import { eq, count, and, inArray, lte, gte, isNotNull } from "drizzle-orm";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination } from "@shared/schema.js";
 import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -402,4 +402,97 @@ export async function updateAppSettings(
     .where(eq(appSettings.id, 1))
     .returning();
   return updated;
+}
+
+// ─── Regional Destinations ────────────────────────────────────────────────────
+
+export type DestinationComputedStatus = "active" | "expiring_soon" | "expired";
+
+export function computeDestinationStatus(dest: RegionalDestination): DestinationComputedStatus {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (dest.endDate) {
+    const end = new Date(dest.endDate);
+    end.setHours(0, 0, 0, 0);
+    if (end < today) return "expired";
+    const thirtyDaysOut = new Date(today);
+    thirtyDaysOut.setDate(thirtyDaysOut.getDate() + 30);
+    if (end <= thirtyDaysOut) return "expiring_soon";
+  }
+  return "active";
+}
+
+export async function getDestinations(titleId?: number): Promise<(RegionalDestination & { computedStatus: DestinationComputedStatus })[]> {
+  const query = db.select().from(regionalDestinations);
+  const rows = titleId
+    ? await query.where(eq(regionalDestinations.titleId, titleId)).orderBy(regionalDestinations.countryCode)
+    : await query.orderBy(regionalDestinations.countryCode);
+  return rows.map((d) => ({ ...d, computedStatus: computeDestinationStatus(d) }));
+}
+
+export async function getDestinationById(id: number): Promise<RegionalDestination | undefined> {
+  const result = await db
+    .select()
+    .from(regionalDestinations)
+    .where(eq(regionalDestinations.id, id))
+    .limit(1);
+  return result[0];
+}
+
+export async function createDestination(
+  data: Omit<RegionalDestination, "id" | "createdAt" | "updatedAt">
+): Promise<RegionalDestination> {
+  const [created] = await db.insert(regionalDestinations).values(data).returning();
+  return created;
+}
+
+export async function updateDestination(
+  id: number,
+  data: Partial<Omit<RegionalDestination, "id" | "createdAt" | "updatedAt">>
+): Promise<RegionalDestination> {
+  const [updated] = await db
+    .update(regionalDestinations)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(regionalDestinations.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteDestination(id: number): Promise<void> {
+  await db.delete(regionalDestinations).where(eq(regionalDestinations.id, id));
+}
+
+export async function getExpiringDestinations(daysAhead = 30): Promise<(RegionalDestination & { computedStatus: DestinationComputedStatus })[]> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const future = new Date(today);
+  future.setDate(future.getDate() + daysAhead);
+
+  const rows = await db
+    .select()
+    .from(regionalDestinations)
+    .where(
+      and(
+        isNotNull(regionalDestinations.endDate),
+        lte(regionalDestinations.endDate, future.toISOString().slice(0, 10)),
+        gte(regionalDestinations.endDate, today.toISOString().slice(0, 10))
+      )
+    )
+    .orderBy(regionalDestinations.endDate);
+
+  return rows.map((d) => ({ ...d, computedStatus: computeDestinationStatus(d) }));
+}
+
+export async function getTitlesWithNoActiveDestinations(): Promise<{ id: number; titleName: string }[]> {
+  const activeDestTitleIds = await db
+    .selectDistinct({ titleId: regionalDestinations.titleId })
+    .from(regionalDestinations)
+    .where(eq(regionalDestinations.status, "active"));
+
+  const activeIds = activeDestTitleIds.map((r) => r.titleId).filter((id): id is number => id !== null);
+
+  const allTitles = await db.select({ id: titles.id, titleName: titles.titleName }).from(titles);
+
+  return allTitles.filter((t) => !activeIds.includes(t.id));
 }

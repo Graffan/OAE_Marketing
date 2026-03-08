@@ -418,6 +418,28 @@ export const insertClipSchema = createInsertSchema(clips)
     embargoDate: z.string().nullable().optional(),
   });
 
+export const insertDestinationSchema = createInsertSchema(regionalDestinations).pick({
+  titleId: true,
+  countryCode: true,
+  regionName: true,
+  platformName: true,
+  platformType: true,
+  destinationUrl: true,
+  ctaLabel: true,
+  language: true,
+  startDate: true,
+  endDate: true,
+  status: true,
+  campaignPriority: true,
+  trackingParametersTemplate: true,
+}).extend({
+  campaignPriority: z.number().nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+});
+
+export type InsertDestination = z.infer<typeof insertDestinationSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
