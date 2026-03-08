@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Link, useParams } from "wouter";
-import { ArrowLeft, RefreshCw, Pencil, HardDrive, Film, AlertCircle } from "lucide-react";
+import { ArrowLeft, RefreshCw, Pencil, HardDrive, Film, AlertCircle, RotateCcw, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProjectDialog } from "@/components/ProjectDialog";
 import { useProject, useProjectClips, useSyncProject } from "@/hooks/useProjects";
 import { useTitle } from "@/hooks/useTitles";
 import { useAuth } from "@/hooks/useAuth";
+import { useRotationData, useResetRotation } from "@/hooks/useClipPosts";
+import { RotationIndicator } from "@/components/RotationIndicator";
 import { cn } from "@/lib/utils";
 import type { Clip } from "@shared/schema";
 
@@ -67,11 +69,14 @@ export default function ProjectDetailPage() {
   const isOperator = ["admin", "marketing_operator"].includes(role);
 
   const [editOpen, setEditOpen] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
 
   const { data: project, isLoading: projectLoading } = useProject(id || null);
   const { data: clips = [], isLoading: clipsLoading } = useProjectClips(id || null);
   const { data: title } = useTitle(project?.titleId ?? null);
   const syncProject = useSyncProject();
+  const { data: rotationData } = useRotationData(id || null);
+  const resetRotation = useResetRotation();
 
   const handleSync = async () => {
     if (!project) return;
@@ -209,6 +214,73 @@ export default function ProjectDetailPage() {
             <div className="mt-4 flex items-start gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3">
               <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
               <p className="text-sm text-destructive">{project.syncErrorMessage}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Rotation Section */}
+        <div className="rounded-xl border border-border bg-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Shuffle className="h-4 w-4 text-muted-foreground" />
+              <h2 className="font-semibold text-[15px]">Clip Rotation</h2>
+            </div>
+            {isOperator && (rotationData?.stats.totalApproved ?? 0) > 0 && (
+              <div className="flex items-center gap-2">
+                {resetConfirm ? (
+                  <>
+                    <span className="text-xs text-muted-foreground">Reset cycle?</span>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={resetRotation.isPending}
+                      onClick={async () => {
+                        await resetRotation.mutateAsync(id);
+                        setResetConfirm(false);
+                      }}
+                    >
+                      {resetRotation.isPending ? "Resetting..." : "Confirm"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setResetConfirm(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setResetConfirm(true)}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    Reset Cycle
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {!rotationData ? (
+            <p className="text-sm text-muted-foreground">Loading rotation data...</p>
+          ) : rotationData.stats.totalApproved === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No approved clips yet. Approve clips in the Clip Library to enable rotation.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <RotationIndicator stats={rotationData.stats} />
+              {rotationData.nextClip && (
+                <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">Next clip to post</p>
+                  <p className="text-sm font-medium truncate" title={rotationData.nextClip.filename}>
+                    {rotationData.nextClip.filename}
+                  </p>
+                  {rotationData.nextClip.engagementScore && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Engagement score: {rotationData.nextClip.engagementScore}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

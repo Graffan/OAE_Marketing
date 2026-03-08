@@ -9,8 +9,8 @@ import {
   useRejectClip,
   useBulkApproveClips,
   useBulkArchiveClips,
-  useRotationStats,
 } from "@/hooks/useClips";
+import { useRotationData } from "@/hooks/useClipPosts";
 import ClipCard from "@/components/ClipCard";
 import ClipDetailPanel from "@/components/ClipDetailPanel";
 import ClipMetadataDialog from "@/components/ClipMetadataDialog";
@@ -84,9 +84,16 @@ export default function ClipLibraryPage() {
   const bulkApprove = useBulkApproveClips();
   const bulkArchive = useBulkArchiveClips();
 
-  // Rotation stats for selected clip's project
+  // Rotation data for selected clip's project
   const detailProjectId = selectedClipForDetail?.projectId ?? null;
-  const { data: rotationStats = null } = useRotationStats(detailProjectId);
+  const { data: rotationData } = useRotationData(detailProjectId);
+  const rotationStats = rotationData?.stats
+    ? {
+        totalApproved: rotationData.stats.totalApproved,
+        postedCount: rotationData.stats.totalPosted,
+        remainingInCycle: rotationData.stats.totalUnposted,
+      }
+    : null;
 
   // Filter projects by selected title
   const filteredProjects = filters.titleId
