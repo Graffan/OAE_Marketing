@@ -379,6 +379,7 @@ export default function ClipLibraryPage() {
         onClose={handleCloseDetail}
         canApprove={canApprove}
         canEdit={canEdit}
+        canMarkPosted={canEdit}
         onApprove={handleApprove}
         onReject={handleReject}
         onEdit={handleEdit}

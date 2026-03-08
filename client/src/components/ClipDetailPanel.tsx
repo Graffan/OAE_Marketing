@@ -1,8 +1,10 @@
-import { type ReactNode } from "react";
-import { X, Film, CheckCircle, XCircle, Pencil } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { X, Film, CheckCircle, XCircle, Pencil, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Clip } from "@shared/schema";
 import type { RotationStats } from "@/hooks/useClips";
+import { MarkPostedDialog } from "./MarkPostedDialog";
+import { ClipPostHistoryPanel } from "./ClipPostHistoryPanel";
 
 type StatusKey =
   | "new"
@@ -74,6 +76,7 @@ interface ClipDetailPanelProps {
   onClose: () => void;
   canApprove: boolean;
   canEdit: boolean;
+  canMarkPosted: boolean;
   onApprove: (id: number) => void;
   onReject: (id: number) => void;
   onEdit: (clip: Clip) => void;
@@ -85,11 +88,13 @@ export default function ClipDetailPanel({
   onClose,
   canApprove,
   canEdit,
+  canMarkPosted,
   onApprove,
   onReject,
   onEdit,
   rotationStats,
 }: ClipDetailPanelProps) {
+  const [markPostedOpen, setMarkPostedOpen] = useState(false);
   if (!clip) {
     return (
       <div className="w-80 border-l border-border/50 flex items-center justify-center">
@@ -178,6 +183,15 @@ export default function ClipDetailPanel({
           >
             <Pencil className="h-3.5 w-3.5" />
             Edit Metadata
+          </button>
+        )}
+        {canMarkPosted && clip.status === "approved" && (
+          <button
+            onClick={() => setMarkPostedOpen(true)}
+            className="w-full flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+          >
+            <Send className="h-3.5 w-3.5" />
+            Mark as Posted
           </button>
         )}
       </div>
@@ -271,13 +285,21 @@ export default function ClipDetailPanel({
         </div>
       )}
 
-      {/* Posting history placeholder */}
+      {/* Posting history */}
       <div className="px-4 py-3">
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-1">
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 mb-2">
           Posting History
         </p>
-        <p className="text-xs text-muted-foreground">— Coming in Phase 3</p>
+        <ClipPostHistoryPanel clipId={clip.id} />
       </div>
+
+      {canMarkPosted && (
+        <MarkPostedDialog
+          clip={clip}
+          open={markPostedOpen}
+          onOpenChange={setMarkPostedOpen}
+        />
+      )}
     </div>
   );
 }
