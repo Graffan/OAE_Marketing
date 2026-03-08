@@ -11,6 +11,7 @@ import ProjectDetailPage from "@/pages/ProjectDetailPage";
 import AdminPage from "@/pages/AdminPage";
 import ClipLibraryPage from "@/pages/ClipLibraryPage";
 import DestinationsPage from "@/pages/DestinationsPage";
+import SmartLinksPage from "@/pages/SmartLinksPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -18,6 +19,7 @@ import {
   Video,
   Megaphone,
   Globe,
+  Link2,
   Sparkles,
   BarChart3,
   Settings,
@@ -80,6 +82,7 @@ function Sidebar() {
     { href: "/clips",        label: "Clip Library", icon: Video,           roles: NOT_EXECUTIVE },
     { href: "/campaigns",    label: "Campaigns",    icon: Megaphone,       roles: REVIEWER_AND_ABOVE },
     { href: "/destinations", label: "Destinations", icon: Globe,           roles: OPERATOR_AND_ABOVE },
+    { href: "/smart-links",  label: "Smart Links",  icon: Link2,           roles: OPERATOR_AND_ABOVE },
     { href: "/ai-studio",    label: "AI Studio",    icon: Sparkles,        roles: OPERATOR_AND_ABOVE },
     { href: "/analytics",    label: "Analytics",    icon: BarChart3,       roles: null },
     { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
@@ -212,6 +215,7 @@ export default function App() {
             <Route path="/clips"        component={ClipLibraryPage} />
             <Route path="/campaigns"    component={() => <PlaceholderPage title="Campaigns" />} />
             <Route path="/destinations" component={DestinationsPage} />
+            <Route path="/smart-links"  component={SmartLinksPage} />
             <Route path="/ai-studio"    component={() => <PlaceholderPage title="AI Studio" />} />
             <Route path="/analytics"    component={() => <PlaceholderPage title="Analytics" />} />
             <Route path="/admin"        component={AdminPage} />
