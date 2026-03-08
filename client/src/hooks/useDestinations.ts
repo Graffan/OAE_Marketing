@@ -65,6 +65,20 @@ export function useUpdateDestination() {
   });
 }
 
+export type AlertsResponse = {
+  expiringCount: number;
+  expiringDestinations: DestinationWithStatus[];
+  titlesWithNoDestinations: { id: number; titleName: string }[];
+};
+
+export function useDestinationAlerts() {
+  return useQuery<AlertsResponse>({
+    queryKey: ["/api/alerts/destinations"],
+    queryFn: () => fetchJSON("/api/alerts/destinations"),
+    staleTime: 1000 * 60 * 2, // 2-minute cache
+  });
+}
+
 export function useDeleteDestination() {
   const qc = useQueryClient();
   return useMutation({

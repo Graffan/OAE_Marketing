@@ -711,6 +711,25 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
     }
   });
 
+  // ─── Alerts route ────────────────────────────────────────────────────────────
+
+  // GET /api/alerts/destinations — requireAuth — combined summary for dashboard
+  app.get("/api/alerts/destinations", requireAuth, async (_req, res) => {
+    try {
+      const [expiringDestinations, titlesWithNoDestinations] = await Promise.all([
+        getExpiringDestinations(30),
+        getTitlesWithNoActiveDestinations(),
+      ]);
+      res.json({
+        expiringCount: expiringDestinations.length,
+        expiringDestinations,
+        titlesWithNoDestinations,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ─── Destinations routes ─────────────────────────────────────────────────────
 
   // GET /api/destinations/expiring — requireAuth
