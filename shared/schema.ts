@@ -440,6 +440,20 @@ export const insertDestinationSchema = createInsertSchema(regionalDestinations).
 
 export type InsertDestination = z.infer<typeof insertDestinationSchema>;
 
+export const insertSmartLinkSchema = createInsertSchema(smartLinks).pick({
+  slug: true,
+  titleId: true,
+  defaultUrl: true,
+  trackingParamsTemplate: true,
+  isActive: true,
+  createdById: true,
+}).extend({
+  slug: z.string().min(1).max(20).optional(),
+  titleId: z.number().nullable().optional(),
+});
+
+export type InsertSmartLink = z.infer<typeof insertSmartLinkSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

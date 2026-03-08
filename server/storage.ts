@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations } from "@shared/schema.js";
-import { eq, count, and, inArray, lte, gte, isNotNull } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents } from "@shared/schema.js";
+import { eq, count, and, inArray, lte, gte, isNotNull, sql } from "drizzle-orm";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent } from "@shared/schema.js";
 import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -495,4 +495,94 @@ export async function getTitlesWithNoActiveDestinations(): Promise<{ id: number;
   const allTitles = await db.select({ id: titles.id, titleName: titles.titleName }).from(titles);
 
   return allTitles.filter((t) => !activeIds.includes(t.id));
+}
+
+// ─── Smart Links ───────────────────────────────────────────────────────────────
+
+export function generateSlug(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export async function getSmartLinks(titleId?: number): Promise<SmartLink[]> {
+  const query = db.select().from(smartLinks);
+  return titleId
+    ? query.where(eq(smartLinks.titleId, titleId)).orderBy(smartLinks.createdAt)
+    : query.orderBy(smartLinks.createdAt);
+}
+
+export async function getSmartLinkById(id: number): Promise<SmartLink | undefined> {
+  const result = await db.select().from(smartLinks).where(eq(smartLinks.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getSmartLinkBySlug(slug: string): Promise<SmartLink | undefined> {
+  const result = await db.select().from(smartLinks).where(eq(smartLinks.slug, slug)).limit(1);
+  return result[0];
+}
+
+export async function createSmartLink(
+  data: Omit<SmartLink, "id" | "createdAt" | "updatedAt"> & { slug?: string }
+): Promise<SmartLink> {
+  const slug = (data.slug ?? "").trim() || generateSlug();
+  // Ensure slug uniqueness — retry once on collision
+  const existing = await getSmartLinkBySlug(slug);
+  if (existing) {
+    const retrySlug = generateSlug();
+    const [created] = await db.insert(smartLinks).values({ ...data, slug: retrySlug }).returning();
+    return created;
+  }
+  const [created] = await db.insert(smartLinks).values({ ...data, slug }).returning();
+  return created;
+}
+
+export async function updateSmartLink(
+  id: number,
+  data: Partial<Omit<SmartLink, "id" | "slug" | "createdAt" | "updatedAt">>
+): Promise<SmartLink> {
+  const [updated] = await db
+    .update(smartLinks)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(smartLinks.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteSmartLink(id: number): Promise<void> {
+  await db.delete(smartLinks).where(eq(smartLinks.id, id));
+}
+
+export async function recordSmartLinkClick(
+  smartLinkId: number,
+  countryCode: string,
+  resolvedUrl: string,
+  isDefault: boolean
+): Promise<void> {
+  await db.insert(analyticsEvents).values({
+    eventType: "smart_link_click",
+    smartLinkId,
+    region: countryCode,
+    metadata: { resolvedUrl, isDefault },
+  });
+}
+
+export async function resolveDestinationForCountry(
+  titleId: number,
+  countryCode: string
+): Promise<RegionalDestination | undefined> {
+  const today = new Date().toISOString().slice(0, 10);
+  const result = await db
+    .select()
+    .from(regionalDestinations)
+    .where(
+      and(
+        eq(regionalDestinations.titleId, titleId),
+        eq(regionalDestinations.countryCode, countryCode.toUpperCase()),
+        eq(regionalDestinations.status, "active"),
+        sql`(${regionalDestinations.startDate} IS NULL OR ${regionalDestinations.startDate} <= ${today})`,
+        sql`(${regionalDestinations.endDate} IS NULL OR ${regionalDestinations.endDate} >= ${today})`
+      )
+    )
+    .orderBy(sql`${regionalDestinations.campaignPriority} DESC`)
+    .limit(1);
+  return result[0];
 }
