@@ -1305,3 +1305,53 @@ export async function getAssetHealthReport(): Promise<{
 
   return { unsyncedProjects, titlesWithNoClips, titlesWithNoDestinations, clipsWithMissingMetadata };
 }
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export async function createNotification(data: {
+  userId?: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+}): Promise<Notification> {
+  const [created] = await db
+    .insert(notifications)
+    .values({ ...data, isRead: false })
+    .returning();
+  return created;
+}
+
+export async function getNotifications(userId?: number, limit = 50): Promise<Notification[]> {
+  const query = db.select().from(notifications);
+  const rows = userId
+    ? await query.where(eq(notifications.userId, userId)).orderBy(desc(notifications.createdAt)).limit(limit)
+    : await query.orderBy(desc(notifications.createdAt)).limit(limit);
+  return rows;
+}
+
+export async function getUnreadCount(userId?: number): Promise<number> {
+  const conditions = [eq(notifications.isRead, false)];
+  if (userId != null) conditions.push(eq(notifications.userId, userId));
+  const [result] = await db
+    .select({ total: count() })
+    .from(notifications)
+    .where(and(...conditions));
+  return Number(result?.total ?? 0);
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await db
+    .update(notifications)
+    .set({ isRead: true })
+    .where(eq(notifications.id, id));
+}
+
+export async function markAllNotificationsRead(userId?: number): Promise<void> {
+  const conditions = [eq(notifications.isRead, false)];
+  if (userId != null) conditions.push(eq(notifications.userId, userId));
+  await db
+    .update(notifications)
+    .set({ isRead: true })
+    .where(and(...conditions));
+}
