@@ -9,7 +9,8 @@ export type AiTask =
   | "campaign_brief"
   | "clip_to_post"
   | "territory_assistant"
-  | "catalog_revival";
+  | "catalog_revival"
+  | "performance_summarizer";
 
 export interface GenerateOptions {
   forceProvider?: "claude" | "openai" | "deepseek";

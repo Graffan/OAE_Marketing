@@ -70,6 +70,7 @@ import {
   getAiLogById,
   getAiUsageSummary,
   getPromptTemplates,
+  getPromptTemplate,
   updatePromptTemplate,
   computeClipPerformanceScore,
   getClipAnalytics,
@@ -1456,6 +1457,53 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       const posts = await getCampaignAnalytics(id);
       res.json(posts);
     } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/analytics/weekly-summary — requireAuth, requireOperator
+  app.post("/api/analytics/weekly-summary", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { provider } = req.body as { provider?: string };
+
+      const [topClips, byPlatform, byRegion] = await Promise.all([
+        getTopPerformingClips(10),
+        getAnalyticsByPlatform(),
+        getAnalyticsByRegion(),
+      ]);
+
+      const userPrompt = `Weekly Performance Summary Request:
+
+Top Performing Clips (by engagement score):
+${topClips.map((c) => `- Clip ID ${c.id}: ${c.filename} | engagement: ${c.engagementScore} | posted: ${c.postedCount}x`).join("\n")}
+
+Performance by Platform:
+${byPlatform.map((p) => `- ${p.platform}: ${p.postCount} posts, ${p.impressions} impressions, ${p.likes} likes, ${p.clickThroughs} click-throughs`).join("\n")}
+
+Performance by Region:
+${byRegion.map((r) => `- ${r.region}: ${r.postCount} posts, ${r.impressions} impressions, ${r.clickThroughs} click-throughs`).join("\n")}
+
+Please provide: (1) What worked this week, (2) What failed or underperformed, (3) Best hook types, (4) Recommended next actions.`;
+
+      const template = await getPromptTemplate("performance_summarizer");
+      if (!template) {
+        return res.status(500).json({ message: "performance_summarizer prompt template not found — run db:seed" });
+      }
+
+      const result = await generateText(
+        "performance_summarizer",
+        template.systemPrompt,
+        userPrompt,
+        template.version,
+        { forceProvider: provider as any, userId: user?.id }
+      );
+
+      res.json(result);
+    } catch (err: any) {
+      if (err.message?.includes("cap")) {
+        return res.status(429).json({ message: err.message });
+      }
       res.status(500).json({ message: err.message });
     }
   });

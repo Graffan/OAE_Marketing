@@ -37,6 +37,12 @@ const DEFAULT_PROMPT_TEMPLATES = [
     userPromptTemplate:
       "Catalog: {{catalogTitles}}\nCurrent date: {{currentDate}}\nSeasonal context: {{seasonalContext}}\nIdentify 3-5 titles best suited for revival promotion with rationale based on seasonality, trends, and platform availability.",
   },
+  {
+    taskName: "performance_summarizer",
+    systemPrompt:
+      "You are an entertainment marketing analyst. Analyze clip performance data and produce a concise weekly summary with actionable insights.",
+    userPromptTemplate: "{{user_prompt}}",
+  },
 ] as const;
 
 async function seedPromptTemplates(): Promise<void> {
