@@ -947,6 +947,11 @@ export async function createAiLog(
   return created;
 }
 
+export async function getAiLogById(id: number): Promise<AiLog | null> {
+  const result = await db.select().from(aiLogs).where(eq(aiLogs.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
 export async function getAiLogs(
   page: number,
   limit: number
