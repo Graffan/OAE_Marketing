@@ -1561,6 +1561,62 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
     }
   });
 
+  // ─── Failure Handling Routes ──────────────────────────────────────────────────
+
+  app.post("/api/projects/:id/sync-retry", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid project id" });
+      }
+      const project = await getProjectById(id);
+      if (!project) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      const userId = (req.user as any).id as number;
+      try {
+        await syncProjectClips(id);
+        createNotification({
+          type: "clip_synced",
+          title: "Sync Complete",
+          message: `Project "${project.projectName}" synced successfully.`,
+          userId,
+        }).catch(console.error);
+        res.json({ success: true, message: "Sync complete" });
+      } catch (err: any) {
+        createNotification({
+          type: "sync_error",
+          title: "Sync Failed",
+          message: `Sync for "${project.projectName}" failed: ${err.message}`,
+          userId,
+        }).catch(console.error);
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/clips/mark-unavailable", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { dropboxFileId } = req.body;
+      if (!dropboxFileId || typeof dropboxFileId !== "string" || dropboxFileId.trim() === "") {
+        return res.status(400).json({ message: "dropboxFileId is required" });
+      }
+      const userId = (req.user as any).id as number;
+      await markClipUnavailable(dropboxFileId);
+      createNotification({
+        type: "deleted_source_file",
+        title: "Clip Unavailable",
+        message: `Source file ${dropboxFileId} has been marked unavailable.`,
+        userId,
+      }).catch(console.error);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   const server = http.createServer(app);
   return server;
 }
