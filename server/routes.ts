@@ -81,6 +81,12 @@ import {
   getAnalyticsDashboardSummary,
   getAssetHealthReport,
   recordAnalyticsEvent,
+  createNotification,
+  getNotifications,
+  getUnreadCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  markClipUnavailable,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -1504,6 +1510,53 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       if (err.message?.includes("cap")) {
         return res.status(429).json({ message: err.message });
       }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Notification Routes ─────────────────────────────────────────────────────
+
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id as number;
+      const rawLimit = parseInt((req.query.limit as string) ?? "50", 10);
+      const limit = isNaN(rawLimit) ? 50 : Math.min(rawLimit, 100);
+      const notifications = await getNotifications(userId, limit);
+      res.json(notifications);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id as number;
+      const count = await getUnreadCount(userId);
+      res.json({ count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ message: "Invalid notification id" });
+      }
+      await markNotificationRead(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id as number;
+      await markAllNotificationsRead(userId);
+      res.json({ success: true });
+    } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
