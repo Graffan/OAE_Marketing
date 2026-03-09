@@ -873,3 +873,67 @@ export async function patchCampaignStatus(
     .returning();
   return updated;
 }
+
+// ─── Campaign Contents ────────────────────────────────────────────────────────
+
+export async function getCampaignContents(campaignId: number): Promise<CampaignContent[]> {
+  return db
+    .select()
+    .from(campaignContents)
+    .where(eq(campaignContents.campaignId, campaignId))
+    .orderBy(
+      asc(campaignContents.contentType),
+      asc(campaignContents.platform),
+      asc(campaignContents.region),
+      desc(campaignContents.version)
+    );
+}
+
+export async function createCampaignContent(data: InsertCampaignContent): Promise<CampaignContent> {
+  const [created] = await db.insert(campaignContents).values(data).returning();
+  return created;
+}
+
+export async function activateCampaignContentVersion(
+  versionId: number,
+  campaignId: number,
+  contentType: string,
+  platform: string,
+  region: string
+): Promise<CampaignContent> {
+  return db.transaction(async (tx) => {
+    // Deactivate all versions matching this (campaignId, contentType, platform, region)
+    await tx
+      .update(campaignContents)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(campaignContents.campaignId, campaignId),
+          eq(campaignContents.contentType, contentType),
+          eq(campaignContents.platform, platform),
+          eq(campaignContents.region, region)
+        )
+      );
+
+    // Activate the chosen version
+    const [activated] = await tx
+      .update(campaignContents)
+      .set({ isActive: true })
+      .where(eq(campaignContents.id, versionId))
+      .returning();
+
+    return activated;
+  });
+}
+
+export async function getActiveCampaignContents(campaignId: number): Promise<CampaignContent[]> {
+  return db
+    .select()
+    .from(campaignContents)
+    .where(
+      and(
+        eq(campaignContents.campaignId, campaignId),
+        eq(campaignContents.isActive, true)
+      )
+    );
+}
