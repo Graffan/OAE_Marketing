@@ -794,6 +794,69 @@ export async function pickNextClip(projectId: number): Promise<Clip | null> {
   return afterReset[0] ?? null;
 }
 
+export async function computeClipPerformanceScore(clipId: number): Promise<number> {
+  const posts = await db.select().from(clipPosts).where(eq(clipPosts.clipId, clipId));
+  if (posts.length === 0) return 0.0;
+
+  const totals = posts.reduce(
+    (acc, p) => ({
+      likes: acc.likes + (p.likes ?? 0),
+      comments: acc.comments + (p.comments ?? 0),
+      shares: acc.shares + (p.shares ?? 0),
+      saves: acc.saves + (p.saves ?? 0),
+      plays: acc.plays + (p.plays ?? 0),
+      clickThroughs: acc.clickThroughs + (p.clickThroughs ?? 0),
+      impressions: acc.impressions + (p.impressions ?? 0),
+    }),
+    { likes: 0, comments: 0, shares: 0, saves: 0, plays: 0, clickThroughs: 0, impressions: 0 }
+  );
+
+  const engagementScore = computeEngagementScore(totals);
+  const avgCTR = (totals.clickThroughs / Math.max(totals.impressions, 1)) * 100;
+
+  const distinctRegions = new Set(posts.map((p) => p.region).filter((r): r is string => r !== null));
+  const regionBreadth = Math.min((distinctRegions.size / 5) * 20, 20);
+
+  const distinctPlatforms = new Set(posts.map((p) => p.platform).filter((p): p is string => p !== null));
+  const platformBreadth = Math.min((distinctPlatforms.size / 4) * 20, 20);
+
+  const total = engagementScore + avgCTR + regionBreadth + platformBreadth;
+  return Math.round(total * 10000) / 10000;
+}
+
+export async function isRepostEligible(
+  clipId: number,
+  options: { engagementThreshold: number; minDaysSinceLastPost: number; isPoolExhausted: boolean }
+): Promise<boolean> {
+  const clip = await getClipById(clipId);
+  if (!clip) return false;
+
+  const daysSince = clip.lastPostedAt
+    ? Math.floor((Date.now() - clip.lastPostedAt.getTime()) / 86400000)
+    : 999;
+
+  const meetsEngagement = Number(clip.engagementScore ?? 0) >= options.engagementThreshold;
+  const meetsDays = daysSince >= options.minDaysSinceLastPost;
+  const meetsPool = options.isPoolExhausted || (clip.postedCount ?? 0) > 0;
+
+  return meetsEngagement && meetsDays && meetsPool;
+}
+
+export async function recordAnalyticsEvent(data: {
+  eventType: string;
+  clipId?: number;
+  clipPostId?: number;
+  campaignId?: number;
+  smartLinkId?: number;
+  userId?: number;
+  region?: string;
+  platform?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<AnalyticsEvent> {
+  const [created] = await db.insert(analyticsEvents).values(data).returning();
+  return created;
+}
+
 // ─── Campaigns ────────────────────────────────────────────────────────────────
 
 export async function getCampaigns(titleId?: number): Promise<(Campaign & { titleName: string })[]> {
