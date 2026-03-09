@@ -1,8 +1,8 @@
 # OAE_Marketing — Project State
 
-**Last Updated:** 2026-03-07
+**Last Updated:** 2026-03-09
 **Current Milestone:** v1.0
-**Current Phase:** Phase 2 — Destinations & Smart Links
+**Current Phase:** Phase 4 — Campaign Builder
 
 ---
 
@@ -11,7 +11,7 @@
 **Phase 1:** Complete
 **Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
-**Phase 4:** Not started
+**Phase 4:** In progress — Plan 01 (Schema + Seed) complete
 **Phase 5:** Not started
 
 ---
@@ -31,7 +31,7 @@
 
 ## What's Next
 
-Phase 2 fully complete. Run `/gsd:plan-phase 3` to begin Phase 3 (Campaigns).
+Phase 4 Plan 01 complete. Run `/gsd:execute-phase 4` (plan 02) to build the AI orchestrator layer.
 
 ---
 
@@ -43,6 +43,17 @@ Phase 2 fully complete. Run `/gsd:plan-phase 3` to begin Phase 3 (Campaigns).
 - `ExpiryAlerts` component (compact + full/dismissible modes)
 - `DashboardPage` at `/` with 4 stat cards (Titles, Clips, Expiring Links, Smart Links)
 - All sidebar nav entries wired with role gating
+
+---
+
+## Phase 4 Plan 01 Deliverables (complete)
+
+- ai_logs table with provider/model/task/token/latency tracking, FK to campaigns and users
+- campaign_contents table for AI-generated copy per campaign with contentType/platform/region/version
+- prompt_templates table with four seeded defaults: campaign_brief, clip_to_post, territory_assistant, catalog_revival
+- insertAiLogSchema, insertCampaignContentSchema, insertPromptTemplateSchema Zod schemas exported
+- Seed script idempotent — checks by taskName before inserting
+- {{double_brace}} variable syntax established for prompt template interpolation
 
 ---
 
