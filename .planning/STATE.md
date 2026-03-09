@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-03-09
 **Current Milestone:** v1.0
-**Current Phase:** Phase 4 — Campaign Builder
+**Current Phase:** Phase 4 — Campaign Builder (Plan 02 complete)
 
 ---
 
@@ -11,7 +11,7 @@
 **Phase 1:** Complete
 **Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
-**Phase 4:** In progress — Plan 01 (Schema + Seed) complete
+**Phase 4:** In progress — Plans 01 (Schema + Seed) and 02 (Storage) complete
 **Phase 5:** Not started
 
 ---
@@ -31,7 +31,7 @@
 
 ## What's Next
 
-Phase 4 Plan 01 complete. Run `/gsd:execute-phase 4` (plan 02) to build the AI orchestrator layer.
+Phase 4 Plans 01 and 02 complete. Run `/gsd:execute-phase 4` (plan 03) to build the AI orchestrator + campaign routes.
 
 ---
 
@@ -43,6 +43,17 @@ Phase 4 Plan 01 complete. Run `/gsd:execute-phase 4` (plan 02) to build the AI o
 - `ExpiryAlerts` component (compact + full/dismissible modes)
 - `DashboardPage` at `/` with 4 stat cards (Titles, Clips, Expiring Links, Smart Links)
 - All sidebar nav entries wired with role gating
+
+---
+
+## Phase 4 Plan 02 Deliverables (complete)
+
+- 18 storage functions across 4 subsections in server/storage.ts
+- Campaign CRUD: getCampaigns (with title join), getCampaignById, createCampaign, updateCampaign, deleteCampaign, patchCampaignStatus
+- Campaign content versioning: getCampaignContents, createCampaignContent, activateCampaignContentVersion (Drizzle transaction), getActiveCampaignContents
+- AI log tracking: createAiLog, getAiLogs (paginated), getAiUsageSummary (daily by user), checkTokenCaps (throws on cap breach)
+- Prompt template CRUD: getPromptTemplates, getPromptTemplate (active by taskName), updatePromptTemplate
+- campaignContents + promptTemplates tables + insert schemas added to schema (Plan 01 partial run deviation fix)
 
 ---
 
@@ -59,6 +70,9 @@ Phase 4 Plan 01 complete. Run `/gsd:execute-phase 4` (plan 02) to build the AI o
 
 ## Key Decisions Made
 
+- **activateCampaignContentVersion:** Uses `db.transaction()` to prevent dual-active content — deactivate all matching (campaignId, contentType, platform, region), then activate chosen version
+- **checkTokenCaps:** Throws Error with exact message strings ("Daily token cap reached", "User token cap reached") for easy catch-and-match in route handlers
+- **Token daily boundary:** Uses `setUTCHours(0,0,0,0)` for consistent midnight UTC regardless of server timezone
 - **Stack:** Node/Express/TS + React/Vite/Tailwind/shadcn/wouter + Postgres/Drizzle (consistent with other 360 Studio Suite apps)
 - **Auth:** Passport.js session-based (same pattern as VFXTracker, ADRSessionManager)
 - **AI:** Multi-provider layer (Claude primary, OpenAI + DeepSeek secondary) with `ai_orchestrator` module
