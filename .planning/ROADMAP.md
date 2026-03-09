@@ -107,6 +107,16 @@
 ### Phase 5: Analytics + Dashboard
 **Goal:** Clip and campaign performance tracking, AI-powered weekly summary
 
+**Plans:** 2/6 plans executed
+
+Plans:
+- [ ] 05-01-PLAN.md — Analytics storage functions (scores, views, dashboard summary, asset health)
+- [ ] 05-02-PLAN.md — Notification schema + storage functions
+- [ ] 05-03-PLAN.md — Analytics API routes + AI weekly summary route
+- [ ] 05-04-PLAN.md — Notification API routes + failure handling routes
+- [ ] 05-05-PLAN.md — useAnalytics + useNotifications hooks + AnalyticsPage UI
+- [ ] 05-06-PLAN.md — Rebuilt DashboardPage + NotificationBell component
+
 **Deliverables:**
 - Analytics events table population from clip_posts data
 - Clip-level analytics: impressions, plays, completion rate, likes, comments, shares, saves, click-throughs, region/platform response

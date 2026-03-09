@@ -12,7 +12,7 @@
 **Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
 **Phase 4:** Complete
-**Phase 5:** Not started
+**Phase 5:** In Progress — Plan 01 (Analytics Storage) complete
 
 ---
 
@@ -31,7 +31,7 @@
 
 ## What's Next
 
-Phase 4 Plans 01 and 02 complete. Run `/gsd:execute-phase 4` (plan 03) to build the AI orchestrator + campaign routes.
+Phase 5 Plan 01 complete. Run `/gsd:execute-phase 5` (plan 02) to build analytics API routes.
 
 ---
 
@@ -68,6 +68,20 @@ Phase 4 Plans 01 and 02 complete. Run `/gsd:execute-phase 4` (plan 03) to build 
 
 ---
 
+## Phase 5 Plan 01 Deliverables (complete)
+
+- 10 analytics storage functions added to server/storage.ts
+- Clip performance scoring: `computeClipPerformanceScore` (engagementScore + CTR + region/platform breadth)
+- Repost eligibility: `isRepostEligible` (engagement threshold + days since post + pool state)
+- Event recording: `recordAnalyticsEvent` inserts into analytics_events table
+- Analytics views: `getClipAnalytics`, `getCampaignAnalytics` ordered by postedAt desc
+- Aggregated views: `getAnalyticsByRegion`, `getAnalyticsByPlatform` with SQL SUM/COUNT and optional titleId filter
+- Top clips: `getTopPerformingClips(limit)` ordered by engagementScore desc
+- Dashboard summary: `getAnalyticsDashboardSummary` — activeCampaigns, titlesNeedingPromotion, rotationByProject, topClips via Promise.all
+- Asset health: `getAssetHealthReport` — unsyncedProjects, titlesWithNoClips, titlesWithNoDestinations, clipsWithMissingMetadata via Promise.all
+
+---
+
 ## Key Decisions Made
 
 - **activateCampaignContentVersion:** Uses `db.transaction()` to prevent dual-active content — deactivate all matching (campaignId, contentType, platform, region), then activate chosen version
@@ -81,6 +95,9 @@ Phase 4 Plans 01 and 02 complete. Run `/gsd:execute-phase 4` (plan 03) to build 
 - **Film Metadata:** OMDb API auto-import on title creation
 - **Port:** TBD (VFXTracker=5001, ADRSessionManager=5002, next likely 5003)
 - **DB:** PostgreSQL database `oae_marketing`, admin: `admin`/`oaeadmin2024`
+- **computeClipPerformanceScore:** Returns 0.0 early if clip has no posts — avoids divide-by-zero and is semantically correct (no data = no score)
+- **getAnalyticsDashboardSummary:** Fetches all projects then calls getRotationStats() per project — N+1 acceptable at current scale
+- **getAssetHealthReport IS NULL OR:** Uses sql template literal since Drizzle's `isNull()` doesn't compose with `or()` cleanly across two columns
 
 ---
 
