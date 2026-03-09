@@ -449,6 +449,54 @@ export const insertPromptTemplateSchema = createInsertSchema(promptTemplates).pi
 export type PromptTemplate = typeof promptTemplates.$inferSelect;
 export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
 
+// ─── notifications ────────────────────────────────────────────────────────────
+
+export const NOTIFICATION_TYPES = [
+  "clip_synced",
+  "approval_required",
+  "link_expiring",
+  "pool_exhausted",
+  "strong_clip_detected",
+  "sync_error",
+  "deleted_source_file",
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    isRead: boolean("is_read").notNull().default(false),
+    metadata: json("metadata").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    notificationsUserIdIdx: index("notifications_user_id_idx").on(table.userId),
+    notificationsIsReadIdx: index("notifications_is_read_idx").on(table.isRead),
+  })
+);
+
+export const insertNotificationSchema = createInsertSchema(notifications)
+  .pick({
+    userId: true,
+    type: true,
+    title: true,
+    message: true,
+    isRead: true,
+    metadata: true,
+  })
+  .extend({
+    userId: z.number().nullable().optional(),
+    metadata: z.record(z.unknown()).nullable().optional(),
+  });
+
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
 // ─── Insert Schemas ───────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users).pick({
