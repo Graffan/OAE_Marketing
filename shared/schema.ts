@@ -363,6 +363,48 @@ export const aiLogs = pgTable(
 
 export type AiLog = typeof aiLogs.$inferSelect;
 
+// ─── campaign_contents ────────────────────────────────────────────────────────
+
+export const campaignContents = pgTable(
+  "campaign_contents",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id")
+      .notNull()
+      .references(() => campaigns.id, { onDelete: "cascade" }),
+    contentType: text("content_type").notNull(),
+    platform: text("platform").notNull().default("generic"),
+    region: text("region").notNull().default("ALL"),
+    version: integer("version").notNull().default(1),
+    body: text("body").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    source: text("source").notNull().default("ai"),
+    aiLogId: integer("ai_log_id").references(() => aiLogs.id, { onDelete: "set null" }),
+    editedById: integer("edited_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    campaignContentsCampaignIdIdx: index("campaign_contents_campaign_id_idx").on(table.campaignId),
+    campaignContentsIsActiveIdx: index("campaign_contents_is_active_idx").on(table.isActive),
+  })
+);
+
+export const insertCampaignContentSchema = createInsertSchema(campaignContents).pick({
+  campaignId: true,
+  contentType: true,
+  platform: true,
+  region: true,
+  version: true,
+  body: true,
+  isActive: true,
+  source: true,
+  aiLogId: true,
+  editedById: true,
+});
+
+export type CampaignContent = typeof campaignContents.$inferSelect;
+export type InsertCampaignContent = z.infer<typeof insertCampaignContentSchema>;
+
 // ─── Insert Schemas ───────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users).pick({
