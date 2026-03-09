@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate } from "@shared/schema.js";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType } from "@shared/schema.js";
 import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -1147,4 +1147,161 @@ export async function updatePromptTemplate(
     .where(eq(promptTemplates.id, id))
     .returning();
   return updated;
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+export async function getClipAnalytics(clipId: number): Promise<ClipPost[]> {
+  return db
+    .select()
+    .from(clipPosts)
+    .where(eq(clipPosts.clipId, clipId))
+    .orderBy(desc(clipPosts.postedAt));
+}
+
+export async function getCampaignAnalytics(campaignId: number): Promise<ClipPost[]> {
+  return db
+    .select()
+    .from(clipPosts)
+    .where(eq(clipPosts.campaignId, campaignId))
+    .orderBy(desc(clipPosts.postedAt));
+}
+
+export async function getAnalyticsByRegion(
+  titleId?: number
+): Promise<{ region: string; impressions: number; plays: number; likes: number; clickThroughs: number; postCount: number }[]> {
+  const baseQuery = db
+    .select({
+      region: clipPosts.region,
+      impressions: sql<number>`COALESCE(SUM(${clipPosts.impressions}), 0)`,
+      plays: sql<number>`COALESCE(SUM(${clipPosts.plays}), 0)`,
+      likes: sql<number>`COALESCE(SUM(${clipPosts.likes}), 0)`,
+      clickThroughs: sql<number>`COALESCE(SUM(${clipPosts.clickThroughs}), 0)`,
+      postCount: sql<number>`COUNT(*)`,
+    })
+    .from(clipPosts);
+
+  const rows = titleId
+    ? await baseQuery
+        .innerJoin(clips, eq(clipPosts.clipId, clips.id))
+        .where(and(isNotNull(clipPosts.region), eq(clips.titleId, titleId)))
+        .groupBy(clipPosts.region)
+    : await baseQuery.where(isNotNull(clipPosts.region)).groupBy(clipPosts.region);
+
+  return rows
+    .filter((r): r is typeof r & { region: string } => r.region !== null)
+    .map((r) => ({
+      region: r.region,
+      impressions: Number(r.impressions),
+      plays: Number(r.plays),
+      likes: Number(r.likes),
+      clickThroughs: Number(r.clickThroughs),
+      postCount: Number(r.postCount),
+    }));
+}
+
+export async function getAnalyticsByPlatform(
+  titleId?: number
+): Promise<{ platform: string; impressions: number; plays: number; likes: number; clickThroughs: number; postCount: number }[]> {
+  const baseQuery = db
+    .select({
+      platform: clipPosts.platform,
+      impressions: sql<number>`COALESCE(SUM(${clipPosts.impressions}), 0)`,
+      plays: sql<number>`COALESCE(SUM(${clipPosts.plays}), 0)`,
+      likes: sql<number>`COALESCE(SUM(${clipPosts.likes}), 0)`,
+      clickThroughs: sql<number>`COALESCE(SUM(${clipPosts.clickThroughs}), 0)`,
+      postCount: sql<number>`COUNT(*)`,
+    })
+    .from(clipPosts);
+
+  const rows = titleId
+    ? await baseQuery
+        .innerJoin(clips, eq(clipPosts.clipId, clips.id))
+        .where(and(isNotNull(clipPosts.platform), eq(clips.titleId, titleId)))
+        .groupBy(clipPosts.platform)
+    : await baseQuery.where(isNotNull(clipPosts.platform)).groupBy(clipPosts.platform);
+
+  return rows
+    .filter((r): r is typeof r & { platform: string } => r.platform !== null)
+    .map((r) => ({
+      platform: r.platform,
+      impressions: Number(r.impressions),
+      plays: Number(r.plays),
+      likes: Number(r.likes),
+      clickThroughs: Number(r.clickThroughs),
+      postCount: Number(r.postCount),
+    }));
+}
+
+export async function getTopPerformingClips(limit = 10): Promise<Clip[]> {
+  return db
+    .select()
+    .from(clips)
+    .where(isNotNull(clips.engagementScore))
+    .orderBy(desc(clips.engagementScore))
+    .limit(limit);
+}
+
+export async function getAnalyticsDashboardSummary(): Promise<{
+  activeCampaigns: Campaign[];
+  titlesNeedingPromotion: Title[];
+  rotationByProject: Array<{ projectId: number; projectName: string; totalApproved: number; totalPosted: number; isPoolExhausted: boolean }>;
+  topClips: Clip[];
+}> {
+  const [activeCampaigns, allTitles, allCampaigns, allProjects, topClips] = await Promise.all([
+    db.select().from(campaigns).where(inArray(campaigns.status, ["active", "awaiting_approval", "ai_generated"])),
+    db.select().from(titles),
+    db.select({ titleId: campaigns.titleId }).from(campaigns).where(eq(campaigns.status, "active")),
+    db.select().from(projects),
+    getTopPerformingClips(5),
+  ]);
+
+  const activeTitleIds = new Set(allCampaigns.map((c) => c.titleId));
+  const titlesNeedingPromotion = allTitles.filter((t) => !activeTitleIds.has(t.id));
+
+  const rotationByProject = await Promise.all(
+    allProjects.map(async (p) => {
+      const stats = await getRotationStats(p.id);
+      return {
+        projectId: p.id,
+        projectName: p.projectName,
+        totalApproved: stats.totalApproved,
+        totalPosted: stats.totalPosted,
+        isPoolExhausted: stats.isPoolExhausted,
+      };
+    })
+  );
+
+  return { activeCampaigns, titlesNeedingPromotion, rotationByProject, topClips };
+}
+
+export async function getAssetHealthReport(): Promise<{
+  unsyncedProjects: Project[];
+  titlesWithNoClips: Title[];
+  titlesWithNoDestinations: { id: number; titleName: string }[];
+  clipsWithMissingMetadata: Clip[];
+}> {
+  const [allProjects, allTitles, allClips, titlesWithNoDestinations, clipsWithMissingMetadata] =
+    await Promise.all([
+      db.select().from(projects),
+      db.select().from(titles),
+      db.select({ titleId: clips.titleId }).from(clips),
+      getTitlesWithNoActiveDestinations(),
+      db
+        .select()
+        .from(clips)
+        .where(sql`${clips.hookType} IS NULL OR ${clips.theme} IS NULL`)
+        .limit(50),
+    ]);
+
+  const unsyncedProjects = allProjects.filter(
+    (p) => p.syncStatus === "error" || p.lastSyncedAt === null
+  );
+
+  const clippedTitleIds = new Set(
+    allClips.map((c) => c.titleId).filter((id): id is number => id !== null)
+  );
+  const titlesWithNoClips = allTitles.filter((t) => !clippedTitleIds.has(t.id));
+
+  return { unsyncedProjects, titlesWithNoClips, titlesWithNoDestinations, clipsWithMissingMetadata };
 }
