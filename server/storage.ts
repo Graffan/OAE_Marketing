@@ -937,3 +937,113 @@ export async function getActiveCampaignContents(campaignId: number): Promise<Cam
       )
     );
 }
+
+// ─── AI Logs ──────────────────────────────────────────────────────────────────
+
+export async function createAiLog(
+  data: Omit<InsertAiLog, "id" | "createdAt">
+): Promise<AiLog> {
+  const [created] = await db.insert(aiLogs).values(data).returning();
+  return created;
+}
+
+export async function getAiLogs(
+  page: number,
+  limit: number
+): Promise<{ rows: AiLog[]; total: number }> {
+  const offset = (page - 1) * limit;
+  const [rows, [{ total }]] = await Promise.all([
+    db
+      .select()
+      .from(aiLogs)
+      .orderBy(desc(aiLogs.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: count() }).from(aiLogs),
+  ]);
+  return { rows, total: Number(total) };
+}
+
+export async function getAiUsageSummary(): Promise<{
+  dailyTotal: number;
+  userTotals: { userId: number | null; total: number }[];
+}> {
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+
+  const [dailyResult, userResult] = await Promise.all([
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${aiLogs.tokensIn} + ${aiLogs.tokensOut}), 0)` })
+      .from(aiLogs)
+      .where(
+        and(
+          gte(aiLogs.createdAt, todayMidnight),
+          eq(aiLogs.status, "success")
+        )
+      ),
+    db
+      .select({
+        userId: aiLogs.userId,
+        total: sql<number>`COALESCE(SUM(${aiLogs.tokensIn} + ${aiLogs.tokensOut}), 0)`,
+      })
+      .from(aiLogs)
+      .where(
+        and(
+          gte(aiLogs.createdAt, todayMidnight),
+          eq(aiLogs.status, "success")
+        )
+      )
+      .groupBy(aiLogs.userId),
+  ]);
+
+  return {
+    dailyTotal: Number(dailyResult[0]?.total ?? 0),
+    userTotals: userResult.map((r) => ({
+      userId: r.userId,
+      total: Number(r.total),
+    })),
+  };
+}
+
+export async function checkTokenCaps(
+  userId: number,
+  settings: AppSettings
+): Promise<void> {
+  const todayMidnight = new Date();
+  todayMidnight.setUTCHours(0, 0, 0, 0);
+
+  const [globalResult, userResult] = await Promise.all([
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${aiLogs.tokensIn} + ${aiLogs.tokensOut}), 0)` })
+      .from(aiLogs)
+      .where(
+        and(
+          gte(aiLogs.createdAt, todayMidnight),
+          eq(aiLogs.status, "success")
+        )
+      ),
+    db
+      .select({ total: sql<number>`COALESCE(SUM(${aiLogs.tokensIn} + ${aiLogs.tokensOut}), 0)` })
+      .from(aiLogs)
+      .where(
+        and(
+          eq(aiLogs.userId, userId),
+          gte(aiLogs.createdAt, todayMidnight),
+          eq(aiLogs.status, "success")
+        )
+      ),
+  ]);
+
+  const dailyTotal = Number(globalResult[0]?.total ?? 0);
+  const userTotal = Number(userResult[0]?.total ?? 0);
+
+  const dailyCap = settings.aiDailyTokenCap ?? 100000;
+  const perUserCap = settings.aiPerUserCap ?? 10000;
+
+  if (dailyTotal >= dailyCap) {
+    throw new Error("Daily token cap reached");
+  }
+  if (userTotal >= perUserCap) {
+    throw new Error("User token cap reached");
+  }
+}
