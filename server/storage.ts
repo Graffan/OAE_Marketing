@@ -1047,3 +1047,36 @@ export async function checkTokenCaps(
     throw new Error("User token cap reached");
   }
 }
+
+// ─── Prompt Templates ─────────────────────────────────────────────────────────
+
+export async function getPromptTemplates(): Promise<PromptTemplate[]> {
+  return db.select().from(promptTemplates).orderBy(asc(promptTemplates.taskName));
+}
+
+export async function getPromptTemplate(taskName: string): Promise<PromptTemplate | undefined> {
+  const result = await db
+    .select()
+    .from(promptTemplates)
+    .where(
+      and(
+        eq(promptTemplates.taskName, taskName),
+        eq(promptTemplates.isActive, true)
+      )
+    )
+    .orderBy(desc(promptTemplates.version))
+    .limit(1);
+  return result[0];
+}
+
+export async function updatePromptTemplate(
+  id: number,
+  data: Partial<InsertPromptTemplate>
+): Promise<PromptTemplate> {
+  const [updated] = await db
+    .update(promptTemplates)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(promptTemplates.id, id))
+    .returning();
+  return updated;
+}
