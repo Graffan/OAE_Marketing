@@ -3,6 +3,7 @@
 **Last Updated:** 2026-03-09
 **Current Milestone:** v1.0
 **Current Phase:** Phase 5 (Phase 4 complete)
+**Last Session:** Completed 05-02-PLAN.md — notifications schema and storage
 
 ---
 
@@ -12,7 +13,7 @@
 **Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
 **Phase 4:** Complete
-**Phase 5:** In Progress — Plan 01 (Analytics Storage) complete
+**Phase 5:** In Progress — Plans 01 (Analytics Storage) and 02 (Notifications Schema + Storage) complete
 
 ---
 
@@ -31,7 +32,7 @@
 
 ## What's Next
 
-Phase 5 Plan 01 complete. Run `/gsd:execute-phase 5` (plan 02) to build analytics API routes.
+Phase 5 Plans 01 and 02 complete. Run `/gsd:execute-phase 5` (plan 03) to continue.
 
 ---
 
@@ -68,6 +69,16 @@ Phase 5 Plan 01 complete. Run `/gsd:execute-phase 5` (plan 02) to build analytic
 
 ---
 
+## Phase 5 Plan 02 Deliverables (complete)
+
+- `NOTIFICATION_TYPES` const array with 7 event types exported from shared/schema.ts
+- `notifications` table: userId FK (set null on delete), type, title, message, isRead (default false), metadata (json), createdAt; indexes on userId and isRead
+- `insertNotificationSchema`, `Notification`, `InsertNotification` types exported
+- 5 storage functions in server/storage.ts: `createNotification`, `getNotifications`, `getUnreadCount`, `markNotificationRead`, `markAllNotificationsRead`
+- DB schema pushed — notifications table live in oae_marketing database
+
+---
+
 ## Phase 5 Plan 01 Deliverables (complete)
 
 - 10 analytics storage functions added to server/storage.ts
@@ -98,6 +109,9 @@ Phase 5 Plan 01 complete. Run `/gsd:execute-phase 5` (plan 02) to build analytic
 - **computeClipPerformanceScore:** Returns 0.0 early if clip has no posts — avoids divide-by-zero and is semantically correct (no data = no score)
 - **getAnalyticsDashboardSummary:** Fetches all projects then calls getRotationStats() per project — N+1 acceptable at current scale
 - **getAssetHealthReport IS NULL OR:** Uses sql template literal since Drizzle's `isNull()` doesn't compose with `or()` cleanly across two columns
+- **NOTIFICATION_TYPES:** const array (not enum) for lightweight union type — NotificationType derived via `(typeof NOTIFICATION_TYPES)[number]`
+- **notifications userId FK:** set null on delete — notifications persist even after user deletion
+- **getUnreadCount / markAllNotificationsRead:** conditions array + `and(...conditions)` pattern matches existing storage.ts style for optional userId filtering
 
 ---
 
