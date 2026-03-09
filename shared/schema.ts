@@ -361,7 +361,23 @@ export const aiLogs = pgTable(
   })
 );
 
+export const insertAiLogSchema = createInsertSchema(aiLogs).pick({
+  provider: true,
+  model: true,
+  task: true,
+  tokensIn: true,
+  tokensOut: true,
+  latencyMs: true,
+  status: true,
+  userId: true,
+  campaignId: true,
+  promptText: true,
+  responseText: true,
+  promptTemplateVersion: true,
+});
+
 export type AiLog = typeof aiLogs.$inferSelect;
+export type InsertAiLog = z.infer<typeof insertAiLogSchema>;
 
 // ─── campaign_contents ────────────────────────────────────────────────────────
 
@@ -404,6 +420,34 @@ export const insertCampaignContentSchema = createInsertSchema(campaignContents).
 
 export type CampaignContent = typeof campaignContents.$inferSelect;
 export type InsertCampaignContent = z.infer<typeof insertCampaignContentSchema>;
+
+// ─── prompt_templates ─────────────────────────────────────────────────────────
+
+export const promptTemplates = pgTable("prompt_templates", {
+  id: serial("id").primaryKey(),
+  taskName: text("task_name").notNull(),
+  provider: text("provider").notNull().default("all"),
+  model: text("model"),
+  systemPrompt: text("system_prompt").notNull(),
+  userPromptTemplate: text("user_prompt_template").notNull(),
+  version: integer("version").notNull().default(1),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPromptTemplateSchema = createInsertSchema(promptTemplates).pick({
+  taskName: true,
+  provider: true,
+  model: true,
+  systemPrompt: true,
+  userPromptTemplate: true,
+  version: true,
+  isActive: true,
+});
+
+export type PromptTemplate = typeof promptTemplates.$inferSelect;
+export type InsertPromptTemplate = z.infer<typeof insertPromptTemplateSchema>;
 
 // ─── Insert Schemas ───────────────────────────────────────────────────────────
 
@@ -563,6 +607,7 @@ export type Clip = typeof clips.$inferSelect;
 export type InsertClip = z.infer<typeof insertClipSchema>;
 export type ClipPost = typeof clipPosts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type SmartLink = typeof smartLinks.$inferSelect;
 export type RegionalDestination = typeof regionalDestinations.$inferSelect;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;

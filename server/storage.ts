@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc } from "drizzle-orm";
 import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost } from "@shared/schema.js";
 import bcrypt from "bcrypt";
