@@ -607,7 +607,6 @@ export type Clip = typeof clips.$inferSelect;
 export type InsertClip = z.infer<typeof insertClipSchema>;
 export type ClipPost = typeof clipPosts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
-export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 export type SmartLink = typeof smartLinks.$inferSelect;
 export type RegionalDestination = typeof regionalDestinations.$inferSelect;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
