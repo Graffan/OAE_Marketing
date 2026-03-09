@@ -71,6 +71,15 @@ import {
   getAiUsageSummary,
   getPromptTemplates,
   updatePromptTemplate,
+  computeClipPerformanceScore,
+  getClipAnalytics,
+  getCampaignAnalytics,
+  getAnalyticsByRegion,
+  getAnalyticsByPlatform,
+  getTopPerformingClips,
+  getAnalyticsDashboardSummary,
+  getAssetHealthReport,
+  recordAnalyticsEvent,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -1036,6 +1045,15 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
         postedById: (req.user as any)?.id,
         postedAt: postedAt ? new Date(postedAt) : undefined,
       });
+      recordAnalyticsEvent({
+        eventType: "clip_posted",
+        clipId,
+        clipPostId: clipPost.id,
+        campaignId: (clipPost as any).campaignId ?? undefined,
+        platform: clipPost.platform ?? undefined,
+        region: clipPost.region ?? undefined,
+        userId: (req.user as any)?.id,
+      }).catch(console.error);
       const updatedClip = await getClipById(clipId);
       res.json({ clipPost, clip: updatedClip });
     } catch (err: any) {
@@ -1356,6 +1374,89 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── Analytics Routes ────────────────────────────────────────────────────────
+
+  // GET /api/analytics/dashboard — requireAuth
+  app.get("/api/analytics/dashboard", requireAuth, async (_req, res) => {
+    try {
+      const summary = await getAnalyticsDashboardSummary();
+      res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/asset-health — requireAuth
+  app.get("/api/analytics/asset-health", requireAuth, async (_req, res) => {
+    try {
+      const report = await getAssetHealthReport();
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/top-clips — requireAuth — optional ?limit= query param (default 10, max 50)
+  app.get("/api/analytics/top-clips", requireAuth, async (req, res) => {
+    try {
+      const rawLimit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const limit = Math.min(Math.max(1, rawLimit), 50);
+      const clips = await getTopPerformingClips(limit);
+      res.json(clips);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/by-region — requireAuth — optional ?titleId= query param
+  app.get("/api/analytics/by-region", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId ? parseInt(req.query.titleId as string) : undefined;
+      const data = await getAnalyticsByRegion(titleId);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/by-platform — requireAuth — optional ?titleId= query param
+  app.get("/api/analytics/by-platform", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId ? parseInt(req.query.titleId as string) : undefined;
+      const data = await getAnalyticsByPlatform(titleId);
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/clips/:id — requireAuth
+  app.get("/api/analytics/clips/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const [posts, performanceScore] = await Promise.all([
+        getClipAnalytics(id),
+        computeClipPerformanceScore(id),
+      ]);
+      res.json({ posts, performanceScore });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/campaigns/:id — requireAuth
+  app.get("/api/analytics/campaigns/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const posts = await getCampaignAnalytics(id);
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
