@@ -334,6 +334,35 @@ export const analyticsEvents = pgTable(
   })
 );
 
+// ─── ai_logs ──────────────────────────────────────────────────────────────────
+
+export const aiLogs = pgTable(
+  "ai_logs",
+  {
+    id: serial("id").primaryKey(),
+    provider: text("provider").notNull(),
+    model: text("model"),
+    task: text("task").notNull(),
+    tokensIn: integer("tokens_in").notNull().default(0),
+    tokensOut: integer("tokens_out").notNull().default(0),
+    latencyMs: integer("latency_ms"),
+    status: text("status").notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    promptText: text("prompt_text"),
+    responseText: text("response_text"),
+    promptTemplateVersion: integer("prompt_template_version"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    aiLogsCampaignIdIdx: index("ai_logs_campaign_id_idx").on(table.campaignId),
+    aiLogsUserIdIdx: index("ai_logs_user_id_idx").on(table.userId),
+    aiLogsCreatedAtIdx: index("ai_logs_created_at_idx").on(table.createdAt),
+  })
+);
+
+export type AiLog = typeof aiLogs.$inferSelect;
+
 // ─── Insert Schemas ───────────────────────────────────────────────────────────
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -492,7 +521,6 @@ export type Clip = typeof clips.$inferSelect;
 export type InsertClip = z.infer<typeof insertClipSchema>;
 export type ClipPost = typeof clipPosts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
-export type { InsertCampaign };
 export type SmartLink = typeof smartLinks.$inferSelect;
 export type RegionalDestination = typeof regionalDestinations.$inferSelect;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
