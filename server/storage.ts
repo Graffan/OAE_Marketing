@@ -793,3 +793,83 @@ export async function pickNextClip(projectId: number): Promise<Clip | null> {
 
   return afterReset[0] ?? null;
 }
+
+// ─── Campaigns ────────────────────────────────────────────────────────────────
+
+export async function getCampaigns(titleId?: number): Promise<(Campaign & { titleName: string })[]> {
+  const query = db
+    .select({
+      id: campaigns.id,
+      titleId: campaigns.titleId,
+      projectId: campaigns.projectId,
+      campaignName: campaigns.campaignName,
+      goal: campaigns.goal,
+      status: campaigns.status,
+      templateType: campaigns.templateType,
+      targetRegions: campaigns.targetRegions,
+      clipIds: campaigns.clipIds,
+      smartLinkId: campaigns.smartLinkId,
+      briefText: campaigns.briefText,
+      aiProviderUsed: campaigns.aiProviderUsed,
+      aiModelUsed: campaigns.aiModelUsed,
+      aiTokensUsed: campaigns.aiTokensUsed,
+      createdById: campaigns.createdById,
+      approvedById: campaigns.approvedById,
+      approvedAt: campaigns.approvedAt,
+      createdAt: campaigns.createdAt,
+      updatedAt: campaigns.updatedAt,
+      titleName: titles.titleName,
+    })
+    .from(campaigns)
+    .leftJoin(titles, eq(campaigns.titleId, titles.id));
+
+  const rows = titleId
+    ? await query.where(eq(campaigns.titleId, titleId)).orderBy(desc(campaigns.createdAt))
+    : await query.orderBy(desc(campaigns.createdAt));
+
+  return rows.map((r) => ({ ...r, titleName: r.titleName ?? "" }));
+}
+
+export async function getCampaignById(id: number): Promise<Campaign | undefined> {
+  const result = await db.select().from(campaigns).where(eq(campaigns.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createCampaign(data: InsertCampaign): Promise<Campaign> {
+  const [created] = await db
+    .insert(campaigns)
+    .values({ ...data, status: data.status ?? "draft" })
+    .returning();
+  return created;
+}
+
+export async function updateCampaign(id: number, data: Partial<InsertCampaign>): Promise<Campaign> {
+  const [updated] = await db
+    .update(campaigns)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(campaigns.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteCampaign(id: number): Promise<void> {
+  await db.delete(campaigns).where(eq(campaigns.id, id));
+}
+
+export async function patchCampaignStatus(
+  id: number,
+  status: string,
+  userId?: number
+): Promise<Campaign> {
+  const patch: Record<string, unknown> = { status, updatedAt: new Date() };
+  if (status === "approved" && userId != null) {
+    patch.approvedById = userId;
+    patch.approvedAt = new Date();
+  }
+  const [updated] = await db
+    .update(campaigns)
+    .set(patch)
+    .where(eq(campaigns.id, id))
+    .returning();
+  return updated;
+}
