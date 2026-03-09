@@ -33,6 +33,7 @@ import {
   Moon,
   Monitor,
 } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
 
 // ─── Role constants ────────────────────────────────────────────────────────────
 const ADMIN_ONLY         = ["admin"];
@@ -149,6 +150,7 @@ function Sidebar() {
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
+          <NotificationBell />
           <button
             onClick={() => logout()}
             className="flex items-center gap-1.5 flex-1 px-2.5 py-1.5 text-[12px] text-white/30 hover:text-white/65 rounded-lg hover:bg-white/[0.06] transition-all"
