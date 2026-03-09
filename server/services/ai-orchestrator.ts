@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import { getPromptTemplate } from "../storage.js";
+import { getPromptTemplate, getFullAppSettings, checkTokenCaps, createAiLog } from "../storage.js";
 import type { AppSettings } from "@shared/schema.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -166,4 +166,108 @@ async function callProvider(
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }
+}
+
+// ─── generateText ─────────────────────────────────────────────────────────────
+
+export async function generateText(
+  task: AiTask,
+  systemPrompt: string,
+  userPrompt: string,
+  templateVersion: number,
+  options: GenerateOptions = {}
+): Promise<GenerateResult> {
+  // 1. Load settings
+  const settings = await getFullAppSettings();
+  if (!settings) {
+    throw new Error("App settings not found — cannot generate text");
+  }
+
+  // 2. Check token caps
+  await checkTokenCaps(options.userId ?? 0, settings);
+
+  // 3. Build provider order (deduplicated)
+  const baseOrder: string[] = options.forceProvider
+    ? [options.forceProvider]
+    : [
+        settings.aiPrimaryProvider ?? "claude",
+        ...(settings.aiFallbackOrder ?? ["openai", "deepseek"]),
+      ];
+  const providerOrder = [...new Set(baseOrder)];
+
+  // 4. Attempt each provider with fallback
+  let lastError: Error | undefined;
+
+  for (const provider of providerOrder) {
+    const startMs = Date.now();
+    try {
+      const result = await callProvider(provider, settings, systemPrompt, userPrompt);
+      const latencyMs = Date.now() - startMs;
+
+      const logRow = await createAiLog({
+        provider,
+        model: result.model,
+        task,
+        tokensIn: result.inputTokens,
+        tokensOut: result.outputTokens,
+        latencyMs,
+        status: "success",
+        userId: options.userId ?? null,
+        campaignId: options.campaignId ?? null,
+        promptText: userPrompt,
+        responseText: result.content,
+        promptTemplateVersion: templateVersion,
+      });
+
+      return {
+        content: result.content,
+        provider,
+        model: result.model,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        latencyMs,
+        logId: logRow.id,
+      };
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      const latencyMs = Date.now() - startMs;
+      lastError = error;
+
+      // Log the failed attempt
+      await createAiLog({
+        provider,
+        model: null,
+        task,
+        tokensIn: 0,
+        tokensOut: 0,
+        latencyMs,
+        status: "error",
+        userId: options.userId ?? null,
+        campaignId: options.campaignId ?? null,
+        promptText: userPrompt,
+        responseText: error.message,
+        promptTemplateVersion: templateVersion,
+      }).catch((logErr) => {
+        console.error("[ai-orchestrator] Failed to write error log:", logErr.message);
+      });
+
+      console.error(`[ai-orchestrator] Provider ${provider} failed, trying next:`, error.message);
+    }
+  }
+
+  throw lastError ?? new Error("All AI providers failed");
+}
+
+// ─── getManualPrompt ──────────────────────────────────────────────────────────
+
+export async function getManualPrompt(
+  task: AiTask,
+  context: Record<string, unknown>
+): Promise<ManualModeResult> {
+  const { systemPrompt, userPrompt } = await buildPrompt(task, context);
+  return {
+    manualMode: true,
+    promptForUser: userPrompt,
+    systemPrompt,
+  };
 }
