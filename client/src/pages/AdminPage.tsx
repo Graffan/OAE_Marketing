@@ -22,8 +22,13 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchJSON, apiRequest } from "@/lib/queryClient";
 import { cn, formatDate } from "@/lib/utils";
-import { Plus, Pencil, KeyRound, Power } from "lucide-react";
+import { Plus, Pencil, KeyRound, Power, ChevronDown, ChevronUp } from "lucide-react";
 import { ROLES } from "@shared/schema";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { useAiUsage, useAiLogs, usePromptTemplates, useUpdatePromptTemplate } from "@/hooks/useAiStudio";
+import { useSettings } from "@/hooks/useSettings";
+import TokenUsageBar from "@/components/ai/TokenUsageBar";
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +64,18 @@ export default function AdminPage() {
           >
             AI Providers
           </TabsTrigger>
+          <TabsTrigger
+            value="ai-logs"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent py-3 px-4"
+          >
+            AI Logs
+          </TabsTrigger>
+          <TabsTrigger
+            value="prompt-templates"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent py-3 px-4"
+          >
+            Prompt Templates
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="flex-1 overflow-auto p-8">
           <UsersTab />
@@ -68,6 +85,12 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="ai" className="flex-1 overflow-auto p-8">
           <AIProvidersTab />
+        </TabsContent>
+        <TabsContent value="ai-logs" className="flex-1 overflow-auto p-8">
+          <AiLogsTab />
+        </TabsContent>
+        <TabsContent value="prompt-templates" className="flex-1 overflow-auto p-8">
+          <PromptTemplatesTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -971,6 +994,228 @@ function AIProvidersTab() {
           <span className="text-sm text-destructive">{saveMutation.error.message}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── AiLogsTab ────────────────────────────────────────────────────────────────
+
+const STATUS_BADGE: Record<string, string> = {
+  success: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  error: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  manual_paste: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+};
+
+function AiLogsTab() {
+  const { settings } = useSettings();
+  const { data: usage } = useAiUsage();
+  const [page, setPage] = useState(1);
+  const { data } = useAiLogs(page);
+  const [expandedLog, setExpandedLog] = useState<number | null>(null);
+
+  const logs = data?.logs ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / 50);
+
+  return (
+    <div className="space-y-8 max-w-5xl">
+      {usage && settings && (
+        <div className="space-y-3">
+          <h2 className="text-base font-semibold">Token Usage Today</h2>
+          <TokenUsageBar
+            dailyTotal={usage.dailyTotal}
+            dailyCap={settings.aiDailyTokenCap ?? 100000}
+          />
+          {usage.userTotals.length > 0 && (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="pb-2 pr-4">User ID</th>
+                  <th className="pb-2 pr-4">Tokens Today</th>
+                  <th className="pb-2 pr-4">Cap</th>
+                  <th className="pb-2">% Used</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.userTotals.map((u) => {
+                  const cap = settings.aiPerUserCap ?? 10000;
+                  const pct = cap > 0 ? Math.round((u.total / cap) * 100) : 0;
+                  return (
+                    <tr key={String(u.userId)} className="border-b last:border-0">
+                      <td className="py-2 pr-4">{u.userId ?? "—"}</td>
+                      <td className="py-2 pr-4">{u.total.toLocaleString()}</td>
+                      <td className="py-2 pr-4">{cap.toLocaleString()}</td>
+                      <td className="py-2">{pct}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <h2 className="text-base font-semibold">AI Audit Log</h2>
+        <div className="rounded-lg border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/50">
+              <tr className="text-left text-muted-foreground">
+                <th className="px-3 py-2">Time</th>
+                <th className="px-3 py-2">Provider</th>
+                <th className="px-3 py-2">Model</th>
+                <th className="px-3 py-2">Task</th>
+                <th className="px-3 py-2">In</th>
+                <th className="px-3 py-2">Out</th>
+                <th className="px-3 py-2">ms</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">User</th>
+                <th className="px-3 py-2">Campaign</th>
+              </tr>
+            </thead>
+            <tbody>
+              {logs.map((log) => (
+                <>
+                  <tr
+                    key={log.id}
+                    className="border-t cursor-pointer hover:bg-muted/30"
+                    onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
+                  >
+                    <td className="px-3 py-2 whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="px-3 py-2">{log.provider}</td>
+                    <td className="px-3 py-2 max-w-[120px] truncate">{log.model}</td>
+                    <td className="px-3 py-2">{log.task}</td>
+                    <td className="px-3 py-2">{log.tokensIn}</td>
+                    <td className="px-3 py-2">{log.tokensOut}</td>
+                    <td className="px-3 py-2">{log.latencyMs}</td>
+                    <td className="px-3 py-2">
+                      <Badge className={cn("text-[10px]", STATUS_BADGE[log.status] ?? "")}>{log.status}</Badge>
+                    </td>
+                    <td className="px-3 py-2">{log.userId ?? "—"}</td>
+                    <td className="px-3 py-2">{log.campaignId ?? "—"}</td>
+                  </tr>
+                  {expandedLog === log.id && (
+                    <tr key={`${log.id}-detail`} className="bg-muted/20">
+                      <td colSpan={10} className="px-3 py-3">
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-[10px] font-medium text-muted-foreground mb-1">PROMPT</p>
+                            <pre className="text-xs whitespace-pre-wrap break-all font-mono bg-background rounded p-2 max-h-40 overflow-y-auto">{log.promptText ?? "—"}</pre>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-medium text-muted-foreground mb-1">RESPONSE</p>
+                            <pre className="text-xs whitespace-pre-wrap break-all font-mono bg-background rounded p-2 max-h-40 overflow-y-auto">{log.responseText ?? "—"}</pre>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+              {logs.length === 0 && (
+                <tr><td colSpan={10} className="px-3 py-6 text-center text-muted-foreground">No logs yet</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-3 text-sm">
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</Button>
+            <span className="text-muted-foreground">Page {page} of {totalPages}</span>
+            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>Next</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── PromptTemplatesTab ───────────────────────────────────────────────────────
+
+function PromptTemplatesTab() {
+  const { data: templates = [] } = usePromptTemplates();
+  const updateTemplate = useUpdatePromptTemplate();
+  const [expandedTpl, setExpandedTpl] = useState<number | null>(null);
+  const [drafts, setDrafts] = useState<Record<number, { systemPrompt: string; userPromptTemplate: string }>>({});
+  const [savedId, setSavedId] = useState<number | null>(null);
+
+  function getDraft(id: number, field: "systemPrompt" | "userPromptTemplate", fallback: string) {
+    return drafts[id]?.[field] ?? fallback;
+  }
+
+  function setDraft(id: number, field: "systemPrompt" | "userPromptTemplate", value: string, t: { systemPrompt: string | null; userPromptTemplate: string | null }) {
+    setDrafts((prev) => ({
+      ...prev,
+      [id]: {
+        systemPrompt: prev[id]?.systemPrompt ?? t.systemPrompt ?? "",
+        userPromptTemplate: prev[id]?.userPromptTemplate ?? t.userPromptTemplate ?? "",
+        [field]: value,
+      },
+    }));
+  }
+
+  function handleSave(t: { id: number; version: number }) {
+    const d = drafts[t.id];
+    if (!d) return;
+    updateTemplate.mutate(
+      { id: t.id, data: { systemPrompt: d.systemPrompt, userPromptTemplate: d.userPromptTemplate } },
+      { onSuccess: () => { setSavedId(t.id); setTimeout(() => setSavedId(null), 2000); } }
+    );
+  }
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <div className="rounded-lg border text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 px-4 py-2">
+        Editing templates affects all future generations. Previous outputs are logged.
+      </div>
+      {templates.map((t) => {
+        const isOpen = expandedTpl === t.id;
+        return (
+          <div key={t.id} className="border rounded-lg overflow-hidden">
+            <button
+              className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+              onClick={() => setExpandedTpl(isOpen ? null : t.id)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="font-medium text-sm">{t.taskName}</span>
+                <Badge variant="outline" className="text-[10px]">v{t.version}</Badge>
+                <Badge variant="outline" className="text-[10px]">{t.provider}</Badge>
+                {t.isActive && <Badge className="text-[10px] bg-emerald-600">active</Badge>}
+              </div>
+              {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {isOpen && (
+              <div className="border-t px-4 py-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">System Prompt</label>
+                  <Textarea
+                    value={getDraft(t.id, "systemPrompt", t.systemPrompt ?? "")}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraft(t.id, "systemPrompt", e.target.value, t)}
+                    className="font-mono text-xs min-h-[80px]"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">User Prompt Template</label>
+                  <Textarea
+                    value={getDraft(t.id, "userPromptTemplate", t.userPromptTemplate ?? "")}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDraft(t.id, "userPromptTemplate", e.target.value, t)}
+                    className="font-mono text-xs min-h-[120px]"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button size="sm" disabled={!drafts[t.id] || updateTemplate.isPending} onClick={() => handleSave(t)}>
+                    Save — v{t.version} → v{t.version + 1}
+                  </Button>
+                  {savedId === t.id && <span className="text-xs text-emerald-600">Saved!</span>}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {templates.length === 0 && (
+        <p className="text-sm text-muted-foreground py-6 text-center">No prompt templates seeded yet.</p>
+      )}
     </div>
   );
 }

@@ -13,6 +13,9 @@ import ClipLibraryPage from "@/pages/ClipLibraryPage";
 import DestinationsPage from "@/pages/DestinationsPage";
 import SmartLinksPage from "@/pages/SmartLinksPage";
 import DashboardPage from "@/pages/DashboardPage";
+import CampaignsPage from "@/pages/CampaignsPage";
+import CampaignDetailPage from "@/pages/CampaignDetailPage";
+import AiStudioPage from "@/pages/AiStudioPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -214,10 +217,11 @@ export default function App() {
             <Route path="/projects" component={ProjectsPage} />
             <Route path="/projects/:id" component={ProjectDetailPage} />
             <Route path="/clips"        component={ClipLibraryPage} />
-            <Route path="/campaigns"    component={() => <PlaceholderPage title="Campaigns" />} />
+            <Route path="/campaigns"    component={CampaignsPage} />
+            <Route path="/campaigns/:id" component={CampaignDetailPage} />
             <Route path="/destinations" component={DestinationsPage} />
             <Route path="/smart-links"  component={SmartLinksPage} />
-            <Route path="/ai-studio"    component={() => <PlaceholderPage title="AI Studio" />} />
+            <Route path="/ai-studio"    component={AiStudioPage} />
             <Route path="/analytics"    component={() => <PlaceholderPage title="Analytics" />} />
             <Route path="/admin"        component={AdminPage} />
             <Route>

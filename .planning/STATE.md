@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-03-09
 **Current Milestone:** v1.0
-**Current Phase:** Phase 4 — Campaign Builder (Plan 02 complete)
+**Current Phase:** Phase 5 (Phase 4 complete)
 
 ---
 
@@ -11,7 +11,7 @@
 **Phase 1:** Complete
 **Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
 **Phase 3:** Not started
-**Phase 4:** In progress — Plans 01 (Schema + Seed) and 02 (Storage) complete
+**Phase 4:** Complete
 **Phase 5:** Not started
 
 ---

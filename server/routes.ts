@@ -56,10 +56,27 @@ import {
   getRotationStats,
   resetRotationCycle,
   pickNextClip,
+  getCampaigns,
+  getCampaignById,
+  createCampaign,
+  updateCampaign,
+  deleteCampaign,
+  patchCampaignStatus,
+  getCampaignContents,
+  createCampaignContent,
+  activateCampaignContentVersion,
+  getActiveCampaignContents,
+  getAiLogs,
+  getAiLogById,
+  getAiUsageSummary,
+  getPromptTemplates,
+  updatePromptTemplate,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
 import { resolveCountryCode } from "./services/geoip.js";
+import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
+import { insertCampaignSchema, insertCampaignContentSchema } from "@shared/schema.js";
 
 function applyTrackingParams(baseUrl: string, template: string, slug: string): string {
   if (!template) return baseUrl;
@@ -1046,6 +1063,299 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       res.json({ success: true, message: "Rotation cycle reset" });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Campaign routes ────────────────────────────────────────────────────────
+
+  // GET /api/campaigns — requireAuth — optional ?titleId= query param
+  app.get("/api/campaigns", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId ? parseInt(req.query.titleId as string) : undefined;
+      const result = await getCampaigns(titleId);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/campaigns — requireOperator
+  app.post("/api/campaigns", requireOperator, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const parsed = insertCampaignSchema.safeParse({ ...req.body, createdById: user.id });
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.format() });
+      }
+      const campaign = await createCampaign(parsed.data);
+      res.status(201).json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/campaigns/:id/contents — requireAuth
+  // MUST be registered BEFORE /api/campaigns/:id to avoid wildcard conflict
+  app.get("/api/campaigns/:id/contents", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const contents = await getCampaignContents(id);
+      res.json(contents);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/campaigns/:id/contents — requireOperator
+  app.post("/api/campaigns/:id/contents", requireOperator, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const campaign = await getCampaignById(campaignId);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+
+      const parsed = insertCampaignContentSchema.safeParse({ ...req.body, campaignId });
+      if (!parsed.success) {
+        return res.status(400).json({ error: parsed.error.format() });
+      }
+      const content = await createCampaignContent(parsed.data);
+      res.status(201).json(content);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/campaigns/:id/contents/:cid/activate — requireOperator
+  app.patch("/api/campaigns/:id/contents/:cid/activate", requireOperator, async (req, res) => {
+    try {
+      const campaignId = parseInt(req.params.id);
+      const versionId = parseInt(req.params.cid);
+      const { contentType, platform, region } = req.body;
+      if (!contentType || !platform || !region) {
+        return res.status(400).json({ error: "contentType, platform, and region are required" });
+      }
+      const activated = await activateCampaignContentVersion(
+        versionId,
+        campaignId,
+        contentType,
+        platform,
+        region
+      );
+      res.json(activated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/campaigns/:id/export — requireOperator
+  app.get("/api/campaigns/:id/export", requireOperator, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campaign = await getCampaignById(id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const activeContents = await getActiveCampaignContents(id);
+      res.json({ campaign, contents: activeContents });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/campaigns/:id — requireAuth
+  app.get("/api/campaigns/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campaign = await getCampaignById(id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      res.json(campaign);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/campaigns/:id — requireOperator
+  app.patch("/api/campaigns/:id", requireOperator, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getCampaignById(id);
+      if (!existing) return res.status(404).json({ error: "Campaign not found" });
+      const updated = await updateCampaign(id, req.body);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /api/campaigns/:id — requireAdmin
+  app.delete("/api/campaigns/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await getCampaignById(id);
+      if (!existing) return res.status(404).json({ error: "Campaign not found" });
+      await deleteCampaign(id);
+      res.status(204).send();
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/campaigns/:id/status — requireReviewer
+  app.patch("/api/campaigns/:id/status", requireReviewer, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      const allowedStatuses = ["draft", "in_review", "approved", "rejected", "archived"];
+      if (!status || !allowedStatuses.includes(status)) {
+        return res.status(400).json({
+          error: `status must be one of: ${allowedStatuses.join(", ")}`,
+        });
+      }
+      const existing = await getCampaignById(id);
+      if (!existing) return res.status(404).json({ error: "Campaign not found" });
+      const user = req.user as any;
+      const updated = await patchCampaignStatus(id, status, user.id);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── AI API routes ──────────────────────────────────────────────────────────
+
+  const VALID_AI_TASKS = ["campaign_brief", "clip_to_post", "territory_assistant", "catalog_revival"];
+
+  // POST /api/ai/generate — requireOperator
+  app.post("/api/ai/generate", requireOperator, async (req, res) => {
+    try {
+      const { task, campaignId, context, provider, saveToContents } = req.body;
+
+      if (!task || !VALID_AI_TASKS.includes(task)) {
+        return res.status(400).json({
+          error: `task must be one of: ${VALID_AI_TASKS.join(", ")}`,
+        });
+      }
+
+      const user = req.user as any;
+      const { systemPrompt, userPrompt, templateVersion } = await buildPrompt(task, context ?? {});
+
+      const result = await generateText(task, systemPrompt, userPrompt, templateVersion, {
+        forceProvider: provider,
+        userId: user.id,
+        campaignId: campaignId ? parseInt(campaignId) : undefined,
+        saveToContents,
+      });
+
+      if (saveToContents && campaignId) {
+        await createCampaignContent({
+          campaignId: parseInt(campaignId),
+          contentType: "caption_long",
+          platform: "generic",
+          region: "ALL",
+          body: result.content,
+          source: "ai",
+          aiLogId: result.logId,
+          version: 1,
+          isActive: true,
+          editedById: null,
+        });
+      }
+
+      res.json({
+        content: result.content,
+        provider: result.provider,
+        model: result.model,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        latencyMs: result.latencyMs,
+        logId: result.logId,
+      });
+    } catch (err: any) {
+      if (err.message.includes("cap")) {
+        return res.status(429).json({ error: err.message });
+      }
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/ai/prompt-preview — requireOperator
+  app.post("/api/ai/prompt-preview", requireOperator, async (req, res) => {
+    try {
+      const { task, context } = req.body;
+      if (!task || !VALID_AI_TASKS.includes(task)) {
+        return res.status(400).json({
+          error: `task must be one of: ${VALID_AI_TASKS.join(", ")}`,
+        });
+      }
+      const result = await getManualPrompt(task, context ?? {});
+      res.json({ systemPrompt: result.systemPrompt, promptForUser: result.promptForUser, manualMode: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ai/logs — requireAdmin
+  app.get("/api/ai/logs", requireAdmin, async (req, res) => {
+    try {
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const result = await getAiLogs(page, limit);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ai/logs/:id — requireAdmin
+  app.get("/api/ai/logs/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const log = await getAiLogById(id);
+      if (!log) return res.status(404).json({ error: "AI log not found" });
+      res.json(log);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ai/usage — requireAuth
+  app.get("/api/ai/usage", requireAuth, async (_req, res) => {
+    try {
+      const summary = await getAiUsageSummary();
+      res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/ai/prompt-templates — requireAdmin
+  app.get("/api/ai/prompt-templates", requireAdmin, async (_req, res) => {
+    try {
+      const templates = await getPromptTemplates();
+      res.json(templates);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // PATCH /api/ai/prompt-templates/:id — requireAdmin
+  app.patch("/api/ai/prompt-templates/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { systemPrompt, userPromptTemplate } = req.body;
+
+      const templates = await getPromptTemplates();
+      const current = templates.find((t) => t.id === id);
+      if (!current) return res.status(404).json({ error: "Prompt template not found" });
+
+      const updateData: Record<string, unknown> = {
+        version: current.version + 1,
+        updatedAt: new Date(),
+      };
+      if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
+      if (userPromptTemplate !== undefined) updateData.userPromptTemplate = userPromptTemplate;
+
+      const updated = await updatePromptTemplate(id, updateData);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
