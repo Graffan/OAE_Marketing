@@ -454,6 +454,30 @@ export const insertSmartLinkSchema = createInsertSchema(smartLinks).pick({
 
 export type InsertSmartLink = z.infer<typeof insertSmartLinkSchema>;
 
+export const insertCampaignSchema = createInsertSchema(campaigns).pick({
+  titleId: true,
+  projectId: true,
+  campaignName: true,
+  goal: true,
+  status: true,
+  templateType: true,
+  targetRegions: true,
+  clipIds: true,
+  smartLinkId: true,
+  briefText: true,
+  createdById: true,
+}).extend({
+  projectId: z.number().nullable().optional(),
+  targetRegions: z.array(z.string()).nullable().optional(),
+  clipIds: z.array(z.number()).nullable().optional(),
+  smartLinkId: z.number().nullable().optional(),
+  briefText: z.string().nullable().optional(),
+  goal: z.string().nullable().optional(),
+  templateType: z.string().nullable().optional(),
+});
+
+export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;
@@ -468,6 +492,7 @@ export type Clip = typeof clips.$inferSelect;
 export type InsertClip = z.infer<typeof insertClipSchema>;
 export type ClipPost = typeof clipPosts.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
+export type { InsertCampaign };
 export type SmartLink = typeof smartLinks.$inferSelect;
 export type RegionalDestination = typeof regionalDestinations.$inferSelect;
 export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
