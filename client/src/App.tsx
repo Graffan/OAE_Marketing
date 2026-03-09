@@ -16,6 +16,7 @@ import DashboardPage from "@/pages/DashboardPage";
 import CampaignsPage from "@/pages/CampaignsPage";
 import CampaignDetailPage from "@/pages/CampaignDetailPage";
 import AiStudioPage from "@/pages/AiStudioPage";
+import AnalyticsPage from "@/pages/AnalyticsPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -39,18 +40,6 @@ const OPERATOR_AND_ABOVE = ["admin", "marketing_operator"];
 const REVIEWER_AND_ABOVE = ["admin", "marketing_operator", "reviewer"];
 const NOT_FREELANCER     = ["admin", "marketing_operator", "reviewer", "executive"];
 const NOT_EXECUTIVE      = ["admin", "marketing_operator", "reviewer", "freelancer"];
-
-// ─── Placeholder page ──────────────────────────────────────────────────────────
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-xl font-semibold text-foreground mb-2">{title}</h1>
-        <p className="text-sm text-muted-foreground">Coming soon</p>
-      </div>
-    </div>
-  );
-}
 
 // ─── Theme toggle ──────────────────────────────────────────────────────────────
 function ThemeToggle() {
@@ -222,7 +211,7 @@ export default function App() {
             <Route path="/destinations" component={DestinationsPage} />
             <Route path="/smart-links"  component={SmartLinksPage} />
             <Route path="/ai-studio"    component={AiStudioPage} />
-            <Route path="/analytics"    component={() => <PlaceholderPage title="Analytics" />} />
+            <Route path="/analytics"    component={AnalyticsPage} />
             <Route path="/admin"        component={AdminPage} />
             <Route>
               <div className="flex h-screen items-center justify-center">
