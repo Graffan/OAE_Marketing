@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, AlertTriangle, X } from "lucide-react";
 import { useGenerateCampaignContent } from "@/hooks/useCampaigns";
 import type { GenerateResult } from "@/hooks/useCampaigns";
 import ManualPasteModal from "@/components/ai/ManualPasteModal";
@@ -46,11 +46,13 @@ export default function WizardStepAI({
 }: WizardStepAIProps) {
   const [provider, setProvider] = useState("auto");
   const [manualModal, setManualModal] = useState<{ task: string; result: GenerateResult } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const generate = useGenerateCampaignContent();
 
   const context = { titleId, goal, regions, clipIds };
 
   function handleGenerate(task: string) {
+    setError(null);
     generate.mutate(
       { task, campaignId, provider: provider === "auto" ? undefined : provider, context },
       {
@@ -58,6 +60,10 @@ export default function WizardStepAI({
           if (result.manualMode) {
             setManualModal({ task, result });
           }
+        },
+        onError: (err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          setError(message);
         },
       }
     );
@@ -69,7 +75,7 @@ export default function WizardStepAI({
     <div className="space-y-5">
       <div className="flex items-center gap-3">
         <label className="text-sm font-medium whitespace-nowrap">AI Provider</label>
-        <Select value={provider} onValueChange={setProvider}>
+        <Select value={provider} onValueChange={(v) => { setProvider(v); setError(null); }}>
           <SelectTrigger className="flex-1">
             <SelectValue />
           </SelectTrigger>
@@ -80,6 +86,19 @@ export default function WizardStepAI({
           </SelectContent>
         </Select>
       </div>
+
+      {error && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2.5">
+          <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-destructive">Generation failed</p>
+            <p className="text-xs text-destructive/80 mt-0.5 break-words">{error}</p>
+          </div>
+          <button onClick={() => setError(null)} className="shrink-0 text-destructive/60 hover:text-destructive">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       <div className="space-y-3">
         {briefContents.length > 0 && (

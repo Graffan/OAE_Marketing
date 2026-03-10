@@ -31,3 +31,18 @@ export async function apiRequest(
   });
   return res;
 }
+
+/** Parse a Response as JSON or throw a user-readable error from the server body. */
+export async function parseOrThrow<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      message = body.error ?? body.message ?? message;
+    } catch {
+      // body wasn't JSON — use status text
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<T>;
+}

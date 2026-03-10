@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJSON, apiRequest } from "@/lib/queryClient";
+import { fetchJSON, apiRequest, parseOrThrow } from "@/lib/queryClient";
 import type { PromptTemplate } from "@shared/schema";
 import type { GenerateResult } from "./useCampaigns";
 
@@ -64,7 +64,7 @@ export function useGenerateContent() {
       clipId?: number;
       provider?: string;
       context?: Record<string, unknown>;
-    }) => apiRequest("POST", "/api/ai/generate", payload).then((r) => r.json() as Promise<GenerateResult>),
+    }) => apiRequest("POST", "/api/ai/generate", payload).then((r) => parseOrThrow<GenerateResult>(r)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/ai/usage"] }),
   });
 }
@@ -75,8 +75,6 @@ export function useGetManualPrompt() {
       task: string;
       context?: Record<string, unknown>;
     }) =>
-      apiRequest("POST", "/api/ai/generate", { ...payload, provider: "manual" }).then(
-        (r) => r.json() as Promise<GenerateResult>
-      ),
+      apiRequest("POST", "/api/ai/prompt-preview", payload).then((r) => parseOrThrow<GenerateResult>(r)),
   });
 }

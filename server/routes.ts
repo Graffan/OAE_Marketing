@@ -1071,9 +1071,11 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
   app.get("/api/projects/:id/rotation", requireAuth, async (req, res) => {
     try {
       const projectId = parseInt(req.params.id);
+      const region = req.query.region as string | undefined;
+      const platform = req.query.platform as string | undefined;
       const [stats, nextClip] = await Promise.all([
         getRotationStats(projectId),
-        pickNextClip(projectId),
+        pickNextClip(projectId, { region, platform }),
       ]);
       res.json({ stats, nextClip });
     } catch (err: any) {
@@ -1227,7 +1229,7 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
     try {
       const id = parseInt(req.params.id);
       const { status } = req.body;
-      const allowedStatuses = ["draft", "in_review", "approved", "rejected", "archived"];
+      const allowedStatuses = ["draft", "ai_generated", "awaiting_approval", "approved", "active", "completed", "rejected", "archived"];
       if (!status || !allowedStatuses.includes(status)) {
         return res.status(400).json({
           error: `status must be one of: ${allowedStatuses.join(", ")}`,
@@ -1265,30 +1267,37 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
         forceProvider: provider,
         userId: user.id,
         campaignId: campaignId ? parseInt(campaignId) : undefined,
-        saveToContents,
       });
 
-      if (saveToContents && campaignId) {
-        await createCampaignContent({
-          campaignId: parseInt(campaignId),
-          contentType: "caption_long",
+      // Auto-save to campaign_contents whenever a campaignId is provided
+      if (campaignId) {
+        const parsedCampaignId = parseInt(campaignId);
+        const existing = await getCampaignContents(parsedCampaignId);
+        const sameType = existing.filter((c) => c.contentType === task);
+        const nextVersion = sameType.length > 0 ? Math.max(...sameType.map((c) => c.version)) + 1 : 1;
+
+        const newContent = await createCampaignContent({
+          campaignId: parsedCampaignId,
+          contentType: task,
           platform: "generic",
           region: "ALL",
           body: result.content,
           source: "ai",
           aiLogId: result.logId,
-          version: 1,
-          isActive: true,
+          version: nextVersion,
+          isActive: false,
           editedById: null,
         });
+        // Activate new version (deactivates previous ones of same type/platform/region)
+        await activateCampaignContentVersion(newContent.id, parsedCampaignId, task, "generic", "ALL");
       }
 
       res.json({
-        content: result.content,
+        text: result.content,
         provider: result.provider,
         model: result.model,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
+        tokensIn: result.inputTokens,
+        tokensOut: result.outputTokens,
         latencyMs: result.latencyMs,
         logId: result.logId,
       });

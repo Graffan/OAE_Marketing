@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchJSON, apiRequest } from "@/lib/queryClient";
+import { fetchJSON, apiRequest, parseOrThrow } from "@/lib/queryClient";
 import type { Campaign, CampaignContent } from "@shared/schema";
 
 export type GenerateResult = {
@@ -81,9 +81,15 @@ export function useCampaignContents(campaignId: number | null) {
 }
 
 export function useGenerateCampaignContent() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: { task: string; campaignId?: number; clipId?: number; provider?: string; context?: Record<string, unknown> }) =>
-      apiRequest("POST", "/api/ai/generate", payload).then((r) => r.json() as Promise<GenerateResult>),
+      apiRequest("POST", "/api/ai/generate", payload).then((r) => parseOrThrow<GenerateResult>(r)),
+    onSuccess: (_data, variables) => {
+      if (variables.campaignId) {
+        qc.invalidateQueries({ queryKey: ["/api/campaigns", variables.campaignId, "contents"] });
+      }
+    },
   });
 }
 

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Sparkles, FileText } from "lucide-react";
+import { Loader2, Sparkles, FileText, AlertTriangle, X } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useTitles } from "@/hooks/useTitles";
 import { useCampaigns } from "@/hooks/useCampaigns";
@@ -89,7 +89,7 @@ export default function AiStudioPage() {
         { task, context: buildContext() },
         {
           onSuccess: (res) => setManualModal(res),
-          onError: (e) => setError(String(e)),
+          onError: (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
         }
       );
       return;
@@ -111,7 +111,7 @@ export default function AiStudioPage() {
             setResult(res);
           }
         },
-        onError: (e) => setError(String(e)),
+        onError: (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
       }
     );
   }
@@ -122,7 +122,7 @@ export default function AiStudioPage() {
       { task, context: buildContext() },
       {
         onSuccess: (res) => setManualModal(res),
-        onError: (e) => setError(String(e)),
+        onError: (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
       }
     );
   }
@@ -275,7 +275,16 @@ export default function AiStudioPage() {
           )}
 
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/50 bg-destructive/5 px-3 py-2.5">
+              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-destructive">Generation failed</p>
+                <p className="text-xs text-destructive/80 mt-0.5 break-words">{error}</p>
+              </div>
+              <button onClick={() => setError(null)} className="shrink-0 text-destructive/60 hover:text-destructive">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
 
           <div className="flex gap-2">

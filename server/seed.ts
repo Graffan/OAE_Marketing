@@ -14,28 +14,30 @@ const DEFAULT_PROMPT_TEMPLATES = [
   {
     taskName: "campaign_brief",
     systemPrompt:
-      "You are an expert film marketing strategist for an independent film distributor. Generate concise, compelling campaign briefs.",
+      "You are an expert film marketing strategist for an independent film distributor. Respond ONLY with a valid JSON object — no markdown, no code fences, no prose outside the JSON. Use exactly these fields: audienceAngle (string), hooks (array of 3 strings), clipRationale (string), cta (string), cadence (string), summary (string).",
     userPromptTemplate:
-      "Title: {{titleName}}\nGoal: {{goal}}\nTarget Regions: {{targetRegions}}\nSynopsis: {{synopsis}}\nKey Selling Points: {{keySellingPoints}}\nGenerate a campaign brief with: audience angle, 3 hook ideas, clip selection rationale, CTA recommendation, and posting cadence.",
+      "Title: {{titleName}}\nGoal: {{goal}}\nTarget Regions: {{targetRegions}}\nSynopsis: {{synopsis}}\nKey Selling Points: {{keySellingPoints}}\nGenerate a campaign brief JSON with: audienceAngle, hooks (3 ideas), clipRationale, cta, cadence, summary.",
   },
   {
     taskName: "clip_to_post",
     systemPrompt:
-      "You are a social media copywriter specializing in independent film marketing. Generate platform-optimized posts.",
+      "You are a social media copywriter specializing in independent film marketing. Respond ONLY with a valid JSON object — no markdown, no code fences, no prose outside the JSON. Use exactly these fields: headline (string, max 80 chars), captionShort (string, max 150 chars), captionLong (string, max 500 chars), cta (string, max 30 chars), hashtags (array of 5-8 strings without # prefix).",
     userPromptTemplate:
-      "Film: {{titleName}}\nClip description: {{clipDescription}}\nPlatform: {{platform}}\nRegion: {{region}}\nSmart Link: {{smartLink}}\nGenerate: headline (max 80 chars), short caption (max 150 chars), long caption (max 500 chars), CTA (max 30 chars), 5-8 hashtags.",
+      "Film: {{titleName}}\nClip description: {{clipDescription}}\nPlatform: {{platform}}\nRegion: {{region}}\nSmart Link: {{smartLink}}\nGenerate a post copy JSON with: headline, captionShort, captionLong, cta, hashtags.",
   },
   {
     taskName: "territory_assistant",
-    systemPrompt: "You are a film distribution rights expert.",
+    systemPrompt:
+      "You are a film distribution rights expert. Respond ONLY with a valid JSON object — no markdown, no code fences, no prose outside the JSON. Use exactly these fields: activeWindows (array of strings), expiringDeals (array of strings), missingRegions (array of strings), promotionalTiming (string), summary (string).",
     userPromptTemplate:
-      "Title: {{titleName}}\nDate range: {{dateRange}}\nActive deals: {{activeDeals}}\nAnalyze active windows, flag expiring deals within 30 days, identify missing regional links, and suggest promotional timing.",
+      "Title: {{titleName}}\nDate range: {{dateRange}}\nActive deals: {{activeDeals}}\nGenerate a territory analysis JSON with: activeWindows, expiringDeals (within 30 days), missingRegions, promotionalTiming, summary.",
   },
   {
     taskName: "catalog_revival",
-    systemPrompt: "You are a film catalog marketing strategist.",
+    systemPrompt:
+      "You are a film catalog marketing strategist. Respond ONLY with a valid JSON object — no markdown, no code fences, no prose outside the JSON. Use exactly these fields: recommendations (array of objects with title and rationale strings), seasonalInsight (string).",
     userPromptTemplate:
-      "Catalog: {{catalogTitles}}\nCurrent date: {{currentDate}}\nSeasonal context: {{seasonalContext}}\nIdentify 3-5 titles best suited for revival promotion with rationale based on seasonality, trends, and platform availability.",
+      "Catalog: {{catalogTitles}}\nCurrent date: {{currentDate}}\nSeasonal context: {{seasonalContext}}\nGenerate a catalog revival JSON with: recommendations (3-5 titles with rationale), seasonalInsight.",
   },
   {
     taskName: "performance_summarizer",
@@ -56,7 +58,15 @@ async function seedPromptTemplates(): Promise<void> {
       .limit(1);
 
     if (existing) {
-      console.log(`Prompt template '${template.taskName}' already exists — skipping.`);
+      // Update system prompt and user prompt to ensure JSON format is current
+      await db
+        .update(promptTemplates)
+        .set({
+          systemPrompt: template.systemPrompt,
+          userPromptTemplate: template.userPromptTemplate,
+        })
+        .where(eq(promptTemplates.taskName, template.taskName));
+      console.log(`Prompt template '${template.taskName}' updated.`);
     } else {
       await db.insert(promptTemplates).values({
         taskName: template.taskName,

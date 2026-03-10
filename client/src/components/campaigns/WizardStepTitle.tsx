@@ -26,6 +26,7 @@ export default function WizardStepTitle({ defaultTitleId, defaultCampaignName, d
   const [titleId, setTitleId] = useState<number | null>(defaultTitleId ?? null);
   const [campaignName, setCampaignName] = useState(defaultCampaignName ?? "");
   const [templateType, setTemplateType] = useState(defaultTemplateType ?? "");
+  const [attempted, setAttempted] = useState(false);
 
   const { data: titles = [] } = useQuery<Title[]>({
     queryKey: ["/api/titles"],
@@ -33,6 +34,11 @@ export default function WizardStepTitle({ defaultTitleId, defaultCampaignName, d
   });
 
   const canProceed = titleId !== null && campaignName.trim() && templateType;
+
+  const missing: string[] = [];
+  if (!titleId) missing.push("a title");
+  if (!campaignName.trim()) missing.push("a campaign name");
+  if (!templateType) missing.push("a template type");
 
   return (
     <div className="space-y-5">
@@ -74,10 +80,18 @@ export default function WizardStepTitle({ defaultTitleId, defaultCampaignName, d
         </Select>
       </div>
 
+      {attempted && !canProceed && (
+        <p className="text-xs text-destructive">
+          Please select {missing.join(", ")} to continue.
+        </p>
+      )}
+
       <div className="flex justify-end pt-2">
         <Button
-          disabled={!canProceed}
-          onClick={() => onNext({ titleId: titleId!, campaignName: campaignName.trim(), templateType })}
+          onClick={() => {
+            if (!canProceed) { setAttempted(true); return; }
+            onNext({ titleId: titleId!, campaignName: campaignName.trim(), templateType });
+          }}
         >
           Next
         </Button>

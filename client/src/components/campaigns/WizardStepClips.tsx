@@ -34,12 +34,15 @@ export default function WizardStepClips({ titleId, defaultClipIds, onBack, onNex
   if (clips.length === 0) {
     return (
       <div className="space-y-5">
-        <p className="text-sm text-muted-foreground py-6 text-center">
-          No approved clips found for this title. Approve clips first.
-        </p>
+        <div className="rounded-lg border border-dashed p-6 text-center space-y-2">
+          <p className="text-sm font-medium">No approved clips yet</p>
+          <p className="text-xs text-muted-foreground">
+            Clips can be attached to this campaign at any time — clipping often happens after release.
+          </p>
+        </div>
         <div className="flex justify-between pt-2">
           <Button variant="outline" onClick={onBack}>Back</Button>
-          <Button disabled onClick={() => onNext([])}>Next</Button>
+          <Button onClick={() => onNext([])}>Next</Button>
         </div>
       </div>
     );
@@ -47,9 +50,11 @@ export default function WizardStepClips({ titleId, defaultClipIds, onBack, onNex
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-muted-foreground">
-        Select clips to feature in this campaign.
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          Optionally select clips to feature in this campaign. You can add more clips later.
+        </p>
+      </div>
 
       <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-1">
         {clips.map((clip) => {
@@ -81,8 +86,8 @@ export default function WizardStepClips({ titleId, defaultClipIds, onBack, onNex
 
       <div className="flex justify-between pt-2">
         <Button variant="outline" onClick={onBack}>Back</Button>
-        <Button disabled={selected.size === 0} onClick={() => onNext(Array.from(selected))}>
-          Next
+        <Button onClick={() => onNext(Array.from(selected))}>
+          {selected.size === 0 ? "Skip for now" : "Next"}
         </Button>
       </div>
     </div>

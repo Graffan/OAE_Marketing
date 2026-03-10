@@ -759,39 +759,63 @@ export async function resetRotationCycle(projectId: number): Promise<void> {
     .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")));
 }
 
-export async function pickNextClip(projectId: number): Promise<Clip | null> {
-  const unposted = await db
+function isClipAllowedForRegionAndPlatform(
+  clip: Clip,
+  region?: string,
+  platform?: string
+): boolean {
+  if (region) {
+    const allowed = clip.allowedRegions as string[] | null;
+    const restricted = clip.restrictedRegions as string[] | null;
+    if (allowed && allowed.length > 0 && !allowed.includes(region)) return false;
+    if (restricted && restricted.length > 0 && restricted.includes(region)) return false;
+  }
+  if (platform) {
+    const fit = clip.platformFit as string[] | null;
+    if (fit && fit.length > 0 && !fit.includes(platform)) return false;
+  }
+  return true;
+}
+
+export async function pickNextClip(
+  projectId: number,
+  options: { region?: string; platform?: string } = {}
+): Promise<Clip | null> {
+  const { region, platform } = options;
+
+  const fetchUnposted = () =>
+    db
+      .select()
+      .from(clips)
+      .where(
+        and(eq(clips.projectId, projectId), eq(clips.status, "approved"), eq(clips.postedCount, 0))
+      )
+      .orderBy(desc(clips.engagementScore));
+
+  const unposted = await fetchUnposted();
+  const eligible = unposted.filter((c) => isClipAllowedForRegionAndPlatform(c, region, platform));
+
+  if (eligible[0]) return eligible[0];
+
+  // Pool exhausted — check if there are any approved clips for this filter at all
+  const allApproved = await db
     .select()
     .from(clips)
-    .where(
-      and(eq(clips.projectId, projectId), eq(clips.status, "approved"), eq(clips.postedCount, 0))
-    )
-    .orderBy(desc(clips.engagementScore))
-    .limit(1);
+    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")));
 
-  if (unposted[0]) return unposted[0];
-
-  // Pool exhausted — check if there are any approved clips at all
-  const anyApproved = await db
-    .select()
-    .from(clips)
-    .where(and(eq(clips.projectId, projectId), eq(clips.status, "approved")))
-    .limit(1);
-
-  if (anyApproved.length === 0) return null;
+  const anyEligible = allApproved.some((c) =>
+    isClipAllowedForRegionAndPlatform(c, region, platform)
+  );
+  if (!anyEligible) return null;
 
   await resetRotationCycle(projectId);
 
-  const afterReset = await db
-    .select()
-    .from(clips)
-    .where(
-      and(eq(clips.projectId, projectId), eq(clips.status, "approved"), eq(clips.postedCount, 0))
-    )
-    .orderBy(desc(clips.engagementScore))
-    .limit(1);
+  const afterReset = await fetchUnposted();
+  const eligibleAfterReset = afterReset.filter((c) =>
+    isClipAllowedForRegionAndPlatform(c, region, platform)
+  );
 
-  return afterReset[0] ?? null;
+  return eligibleAfterReset[0] ?? null;
 }
 
 export async function computeClipPerformanceScore(clipId: number): Promise<number> {

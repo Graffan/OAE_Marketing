@@ -68,6 +68,9 @@ interface ProviderResult {
   outputTokens: number;
 }
 
+const JSON_SYSTEM_SUFFIX =
+  "\n\nIMPORTANT: You must respond with valid JSON only. Do not include markdown code blocks, commentary, or any text outside the JSON object.";
+
 async function callClaudeProvider(
   settings: AppSettings,
   systemPrompt: string,
@@ -81,7 +84,7 @@ async function callClaudeProvider(
   const response = await client.messages.create({
     model,
     max_tokens: 2048,
-    system: systemPrompt,
+    system: systemPrompt + JSON_SYSTEM_SUFFIX,
     messages: [{ role: "user", content: userPrompt }],
   });
   const textBlock = response.content[0] as Anthropic.TextBlock;
@@ -105,6 +108,7 @@ async function callOpenAIProvider(
   const model = settings.openaiModel ?? "gpt-4o";
   const response = await client.chat.completions.create({
     model,
+    response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -136,6 +140,7 @@ async function callDeepSeekProvider(
   });
   const response = await client.chat.completions.create({
     model,
+    response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -166,6 +171,22 @@ async function callProvider(
       return callDeepSeekProvider(settings, systemPrompt, userPrompt);
     default:
       throw new Error(`Unknown provider: ${provider}`);
+  }
+}
+
+/** Strip markdown code fences if a model wraps JSON in ```json ... ``` */
+function stripCodeFences(raw: string): string {
+  return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+}
+
+/** Ensure the stored content is valid JSON. Wraps plain text as { text } as fallback. */
+export function normalizeJsonContent(raw: string): string {
+  const cleaned = stripCodeFences(raw);
+  try {
+    JSON.parse(cleaned);
+    return cleaned;
+  } catch {
+    return JSON.stringify({ text: raw });
   }
 }
 
@@ -205,6 +226,8 @@ export async function generateText(
       const result = await callProvider(provider, settings, systemPrompt, userPrompt);
       const latencyMs = Date.now() - startMs;
 
+      const normalizedContent = normalizeJsonContent(result.content);
+
       const logRow = await createAiLog({
         provider,
         model: result.model,
@@ -216,12 +239,12 @@ export async function generateText(
         userId: options.userId ?? null,
         campaignId: options.campaignId ?? null,
         promptText: userPrompt,
-        responseText: result.content,
+        responseText: normalizedContent,
         promptTemplateVersion: templateVersion,
       });
 
       return {
-        content: result.content,
+        content: normalizedContent,
         provider,
         model: result.model,
         inputTokens: result.inputTokens,
