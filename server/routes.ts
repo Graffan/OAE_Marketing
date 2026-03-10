@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import http from "http";
+import rateLimit from "express-rate-limit";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import bcrypt from "bcrypt";
@@ -487,6 +488,8 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
 
   // ─── Clips routes ────────────────────────────────────────────────────────────
 
+  const BULK_OP_MAX = 500; // safety cap to prevent runaway bulk operations
+
   // POST /api/clips/bulk-approve — requireReviewer
   // MUST be registered BEFORE /api/clips/:id to avoid Express matching "bulk-approve" as :id
   app.post("/api/clips/bulk-approve", requireReviewer, async (req, res) => {
@@ -494,6 +497,9 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       const { ids } = req.body as { ids: number[] };
       if (!Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ message: "ids array is required and must not be empty" });
+      }
+      if (ids.length > BULK_OP_MAX) {
+        return res.status(400).json({ message: `Cannot process more than ${BULK_OP_MAX} items at once` });
       }
       const user = req.user as any;
       await Promise.all(ids.map((id) => approveClip(id, user.id)));
@@ -510,6 +516,9 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       const { ids } = req.body as { ids: number[] };
       if (!Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ message: "ids array is required and must not be empty" });
+      }
+      if (ids.length > BULK_OP_MAX) {
+        return res.status(400).json({ message: `Cannot process more than ${BULK_OP_MAX} items at once` });
       }
       await bulkUpdateClips(ids, { status: "archived" });
       res.json({ message: `${ids.length} clips archived`, count: ids.length });
@@ -720,26 +729,29 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
   });
 
   // PUT /api/admin/settings — requireAdmin
+  const ALLOWED_SETTINGS_FIELDS = new Set([
+    "companyName", "appTitle", "logoUrl", "accentColor",
+    "omdbApiKey",
+    "claudeApiKey", "claudeModel",
+    "openaiApiKey", "openaiModel",
+    "deepseekApiKey", "deepseekModel",
+    "aiPrimaryProvider", "aiFallbackOrder",
+    "aiDailyTokenCap", "aiPerUserCap",
+    "smtpHost", "smtpPort", "smtpUser", "smtpPassword",
+    "smtpFromEmail", "smtpFromName", "smtpTls",
+  ]);
+  const MASK_PATTERN = /^•+$/;
+
   app.put("/api/admin/settings", requireAdmin, async (req, res) => {
     try {
-      // If a masked value is sent (all bullet chars), skip updating that field
-      const MASK_PATTERN = /^•+$/;
-      const clean: any = {};
+      const clean: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(req.body)) {
-        if (typeof value === "string" && MASK_PATTERN.test(value)) {
-          // Skip — user didn't change this API key
-          continue;
-        }
+        // Only accept known, writable settings fields
+        if (!ALLOWED_SETTINGS_FIELDS.has(key)) continue;
+        // Skip masked values (user didn't change the API key)
+        if (typeof value === "string" && MASK_PATTERN.test(value)) continue;
         clean[key] = value;
       }
-
-      // Remove read-only fields
-      delete clean.id;
-      delete clean.updatedAt;
-      delete clean.claudeConfigured;
-      delete clean.openaiConfigured;
-      delete clean.deepseekConfigured;
-      delete clean.omdbConfigured;
 
       const updated = await updateAppSettings(clean);
       // Return safe version (mask keys in response)
@@ -805,6 +817,15 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
     }
   });
 
+  function validateHttpsUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      return false;
+    }
+  }
+
   // POST /api/destinations — requireOperator
   app.post("/api/destinations", requireOperator, async (req, res) => {
     try {
@@ -814,6 +835,9 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       }
       if (!platformName) return res.status(400).json({ message: "platformName is required" });
       if (!destinationUrl) return res.status(400).json({ message: "destinationUrl is required" });
+      if (!validateHttpsUrl(destinationUrl)) {
+        return res.status(400).json({ message: "destinationUrl must be a valid http/https URL" });
+      }
       if (!titleId) return res.status(400).json({ message: "titleId is required" });
       const created = await createDestination({
         ...req.body,
@@ -834,6 +858,9 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       const { id: _id, createdAt: _c, updatedAt: _u, ...updatable } = req.body;
       if (updatable.countryCode) {
         updatable.countryCode = (updatable.countryCode as string).toUpperCase();
+      }
+      if (updatable.destinationUrl && !validateHttpsUrl(updatable.destinationUrl)) {
+        return res.status(400).json({ message: "destinationUrl must be a valid http/https URL" });
       }
       const updated = await updateDestination(id, updatable);
       res.json(updated);
@@ -885,6 +912,12 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       // Apply tracking params
       const template = link.trackingParamsTemplate ?? "utm_source=oaemarketing&utm_medium=smart_link&utm_campaign={slug}";
       const finalUrl = applyTrackingParams(resolvedUrl, template, slug);
+
+      // Validate the resolved URL scheme before redirecting (prevent open redirect to javascript:, data:, etc.)
+      if (!validateHttpsUrl(finalUrl)) {
+        console.error(`[SmartLink] blocked redirect to invalid URL scheme: ${finalUrl}`);
+        return res.status(400).send("Invalid redirect target");
+      }
 
       // Record analytics event (fire and forget)
       recordSmartLinkClick(link.id, countryCode, finalUrl, isDefault).catch((err) => {
@@ -973,6 +1006,9 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
       const user = req.user as any;
       const { defaultUrl } = req.body;
       if (!defaultUrl) return res.status(400).json({ message: "defaultUrl is required" });
+      if (!validateHttpsUrl(defaultUrl)) {
+        return res.status(400).json({ message: "defaultUrl must be a valid http/https URL" });
+      }
       const link = await createSmartLink({ ...req.body, createdById: user.id });
       res.status(201).json(link);
     } catch (err: any) {
@@ -1248,9 +1284,19 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
   // ─── AI API routes ──────────────────────────────────────────────────────────
 
   const VALID_AI_TASKS = ["campaign_brief", "clip_to_post", "territory_assistant", "catalog_revival"];
+  const VALID_AI_PROVIDERS = ["claude", "openai", "deepseek"];
+
+  // Dedicated rate limiter for AI generation — tighter window to prevent cost abuse
+  const aiGenerateLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20,
+    message: { error: "Too many AI generation requests — please wait before trying again." },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
 
   // POST /api/ai/generate — requireOperator
-  app.post("/api/ai/generate", requireOperator, async (req, res) => {
+  app.post("/api/ai/generate", requireOperator, aiGenerateLimiter, async (req, res) => {
     try {
       const { task, campaignId, context, provider, saveToContents } = req.body;
 
@@ -1260,8 +1306,26 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
         });
       }
 
+      // Validate provider if specified — reject unknown values
+      if (provider !== undefined && !VALID_AI_PROVIDERS.includes(provider)) {
+        return res.status(400).json({
+          error: `provider must be one of: ${VALID_AI_PROVIDERS.join(", ")}`,
+        });
+      }
+
+      // Sanitize context: truncate large string values to prevent prompt injection via large payloads
+      const MAX_CONTEXT_VALUE_LEN = 2000;
+      const sanitizedContext = context
+        ? Object.fromEntries(
+            Object.entries(context as Record<string, unknown>).map(([k, v]) => [
+              k,
+              typeof v === "string" ? v.slice(0, MAX_CONTEXT_VALUE_LEN) : v,
+            ])
+          )
+        : {};
+
       const user = req.user as any;
-      const { systemPrompt, userPrompt, templateVersion } = await buildPrompt(task, context ?? {});
+      const { systemPrompt, userPrompt, templateVersion } = await buildPrompt(task, sanitizedContext);
 
       const result = await generateText(task, systemPrompt, userPrompt, templateVersion, {
         forceProvider: provider,
@@ -1553,7 +1617,11 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       if (isNaN(id)) {
         return res.status(400).json({ message: "Invalid notification id" });
       }
-      await markNotificationRead(id);
+      const userId = (req.user as any).id as number;
+      const updated = await markNotificationRead(id, userId);
+      if (!updated) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

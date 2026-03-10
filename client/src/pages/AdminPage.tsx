@@ -76,6 +76,12 @@ export default function AdminPage() {
           >
             Prompt Templates
           </TabsTrigger>
+          <TabsTrigger
+            value="email"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent py-3 px-4"
+          >
+            Email
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="flex-1 overflow-auto p-8">
           <UsersTab />
@@ -91,6 +97,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="prompt-templates" className="flex-1 overflow-auto p-8">
           <PromptTemplatesTab />
+        </TabsContent>
+        <TabsContent value="email" className="flex-1 overflow-auto p-8">
+          <EmailSettingsTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -773,14 +782,18 @@ function AIProvidersTab() {
 
   useEffect(() => {
     if (settings && !form) {
+      const s = settings as any;
       setForm({
         claudeApiKey: "",
-        claudeModel: (settings as any).claudeModel ?? "claude-opus-4-5",
+        claudeModel: s.claudeModel ?? "claude-opus-4-5",
         openaiApiKey: "",
-        openaiModel: (settings as any).openaiModel ?? "gpt-4o",
+        openaiModel: s.openaiModel ?? "gpt-4o",
         deepseekApiKey: "",
-        deepseekModel: (settings as any).deepseekModel ?? "deepseek-chat",
-        aiPrimaryProvider: (settings as any).aiPrimaryProvider ?? "claude",
+        deepseekModel: s.deepseekModel ?? "deepseek-chat",
+        aiPrimaryProvider: s.aiPrimaryProvider ?? "claude",
+        aiFallbackOrder: (s.aiFallbackOrder ?? ["openai", "deepseek"]) as string[],
+        aiDailyTokenCap: s.aiDailyTokenCap ?? 100000,
+        aiPerUserCap: s.aiPerUserCap ?? 10000,
         omdbApiKey: "",
       });
     }
@@ -797,6 +810,9 @@ function AIProvidersTab() {
       if (data.deepseekApiKey) toSend.deepseekApiKey = data.deepseekApiKey;
       if (data.deepseekModel) toSend.deepseekModel = data.deepseekModel;
       if (data.aiPrimaryProvider) toSend.aiPrimaryProvider = data.aiPrimaryProvider;
+      if (data.aiFallbackOrder) toSend.aiFallbackOrder = data.aiFallbackOrder;
+      if (data.aiDailyTokenCap !== undefined) toSend.aiDailyTokenCap = Number(data.aiDailyTokenCap);
+      if (data.aiPerUserCap !== undefined) toSend.aiPerUserCap = Number(data.aiPerUserCap);
       if (data.omdbApiKey) toSend.omdbApiKey = data.omdbApiKey;
       const res = await apiRequest("PUT", "/api/admin/settings", toSend);
       if (!res.ok) {
@@ -955,6 +971,84 @@ function AIProvidersTab() {
               <SelectItem value="deepseek">DeepSeek</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      {/* Fallback Order */}
+      {form && (
+        <div className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Fallback Order</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Providers tried in order when the primary fails. Drag or use arrows to reorder.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            {(form.aiFallbackOrder as string[]).map((p: string, i: number) => (
+              <div key={p} className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground w-4">{i + 1}.</span>
+                <span className="text-sm capitalize flex-1 px-3 py-1.5 border rounded-md bg-muted/30">{p}</span>
+                <button
+                  type="button"
+                  disabled={i === 0}
+                  className="p-1 rounded hover:bg-muted disabled:opacity-30"
+                  onClick={() => {
+                    const arr = [...form.aiFallbackOrder];
+                    [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]];
+                    setForm((f: any) => ({ ...f, aiFallbackOrder: arr }));
+                  }}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={i === (form.aiFallbackOrder as string[]).length - 1}
+                  className="p-1 rounded hover:bg-muted disabled:opacity-30"
+                  onClick={() => {
+                    const arr = [...form.aiFallbackOrder];
+                    [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+                    setForm((f: any) => ({ ...f, aiFallbackOrder: arr }));
+                  }}
+                >
+                  ↓
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Token Caps */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">Token Caps</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Limits AI token usage to control costs. Set 0 to disable.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-daily-cap">Daily Cap (all users)</Label>
+            <Input
+              id="ai-daily-cap"
+              type="number"
+              min={0}
+              step={10000}
+              value={form?.aiDailyTokenCap ?? 100000}
+              onChange={(e) => setForm((f: any) => ({ ...f, aiDailyTokenCap: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-user-cap">Per-User Cap (daily)</Label>
+            <Input
+              id="ai-user-cap"
+              type="number"
+              min={0}
+              step={1000}
+              value={form?.aiPerUserCap ?? 10000}
+              onChange={(e) => setForm((f: any) => ({ ...f, aiPerUserCap: e.target.value }))}
+            />
+          </div>
         </div>
       </div>
 
@@ -1216,6 +1310,191 @@ function PromptTemplatesTab() {
       {templates.length === 0 && (
         <p className="text-sm text-muted-foreground py-6 text-center">No prompt templates seeded yet.</p>
       )}
+    </div>
+  );
+}
+
+// ─── Email Settings Tab ────────────────────────────────────────────────────────
+
+function EmailSettingsTab() {
+  const qc = useQueryClient();
+  const [form, setForm] = useState<any>(null);
+  const [saved, setSaved] = useState(false);
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["/api/admin/settings"],
+    queryFn: () => fetchJSON("/api/admin/settings"),
+  });
+
+  useEffect(() => {
+    if (settings && !form) {
+      const s = settings as any;
+      setForm({
+        smtpHost: s.smtpHost ?? "",
+        smtpPort: s.smtpPort ?? 587,
+        smtpUser: s.smtpUser ?? "",
+        smtpPassword: "",
+        smtpFromEmail: s.smtpFromEmail ?? "",
+        smtpFromName: s.smtpFromName ?? "",
+        smtpTls: s.smtpTls ?? true,
+      });
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const toSend: any = {
+        smtpHost: data.smtpHost,
+        smtpPort: Number(data.smtpPort),
+        smtpUser: data.smtpUser,
+        smtpFromEmail: data.smtpFromEmail,
+        smtpFromName: data.smtpFromName,
+        smtpTls: data.smtpTls,
+      };
+      // Only send password if user typed a new one
+      if (data.smtpPassword) toSend.smtpPassword = data.smtpPassword;
+      const res = await apiRequest("PUT", "/api/admin/settings", toSend);
+      if (!res.ok) {
+        const b = await res.json();
+        throw new Error(b.message ?? "Save failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/settings"] });
+      setSaved(true);
+      setForm((f: any) => ({ ...f, smtpPassword: "" }));
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  if (isLoading || !form) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary/20 border-t-primary" />
+      </div>
+    );
+  }
+
+  const s = settings as any;
+  const smtpConfigured = !!(s?.smtpHost && s?.smtpUser);
+
+  return (
+    <div className="max-w-xl space-y-8">
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="text-base font-semibold">Email / SMTP</h2>
+          <span
+            className={cn(
+              "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+              smtpConfigured
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "bg-gray-500/10 text-gray-400 border border-gray-500/20"
+            )}
+          >
+            {smtpConfigured ? "Configured" : "Not Set"}
+          </span>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Used for system notifications. Leave blank to disable email sending.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="smtp-host">SMTP Host</Label>
+          <Input
+            id="smtp-host"
+            value={form.smtpHost}
+            onChange={(e) => setForm((f: any) => ({ ...f, smtpHost: e.target.value }))}
+            placeholder="smtp.example.com"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="smtp-port">Port</Label>
+          <Input
+            id="smtp-port"
+            type="number"
+            value={form.smtpPort}
+            onChange={(e) => setForm((f: any) => ({ ...f, smtpPort: e.target.value }))}
+            placeholder="587"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="smtp-user">SMTP Username</Label>
+        <Input
+          id="smtp-user"
+          value={form.smtpUser}
+          onChange={(e) => setForm((f: any) => ({ ...f, smtpUser: e.target.value }))}
+          placeholder="user@example.com"
+          autoComplete="username"
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="smtp-password">
+          SMTP Password
+          {s?.smtpHost && (
+            <span className="text-xs text-muted-foreground ml-2">(leave blank to keep current)</span>
+          )}
+        </Label>
+        <Input
+          id="smtp-password"
+          type="password"
+          value={form.smtpPassword}
+          onChange={(e) => setForm((f: any) => ({ ...f, smtpPassword: e.target.value }))}
+          placeholder="Enter new password to update..."
+          autoComplete="new-password"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="smtp-from-email">From Email</Label>
+          <Input
+            id="smtp-from-email"
+            type="email"
+            value={form.smtpFromEmail}
+            onChange={(e) => setForm((f: any) => ({ ...f, smtpFromEmail: e.target.value }))}
+            placeholder="noreply@otheranimal.app"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="smtp-from-name">From Name</Label>
+          <Input
+            id="smtp-from-name"
+            value={form.smtpFromName}
+            onChange={(e) => setForm((f: any) => ({ ...f, smtpFromName: e.target.value }))}
+            placeholder="OAE Marketing"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <input
+          id="smtp-tls"
+          type="checkbox"
+          checked={form.smtpTls}
+          onChange={(e) => setForm((f: any) => ({ ...f, smtpTls: e.target.checked }))}
+          className="h-4 w-4 rounded border-border"
+        />
+        <Label htmlFor="smtp-tls" className="cursor-pointer">Use TLS / STARTTLS</Label>
+      </div>
+
+      <div className="flex items-center gap-3 pt-2">
+        <Button
+          onClick={() => saveMutation.mutate(form)}
+          disabled={saveMutation.isPending}
+        >
+          {saveMutation.isPending ? "Saving..." : "Save Email Settings"}
+        </Button>
+        {saved && <span className="text-sm text-green-400 font-medium">Saved!</span>}
+        {saveMutation.error && (
+          <span className="text-sm text-destructive">{(saveMutation.error as Error).message}</span>
+        )}
+      </div>
     </div>
   );
 }

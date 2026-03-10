@@ -1364,11 +1364,13 @@ export async function getUnreadCount(userId?: number): Promise<number> {
   return Number(result?.total ?? 0);
 }
 
-export async function markNotificationRead(id: number): Promise<void> {
-  await db
+export async function markNotificationRead(id: number, userId: number): Promise<boolean> {
+  const result = await db
     .update(notifications)
     .set({ isRead: true })
-    .where(eq(notifications.id, id));
+    .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+    .returning({ id: notifications.id });
+  return result.length > 0;
 }
 
 export async function markAllNotificationsRead(userId?: number): Promise<void> {

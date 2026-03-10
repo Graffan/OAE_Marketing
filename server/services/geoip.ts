@@ -18,10 +18,12 @@ function extractIp(req: Request): string {
 }
 
 export async function resolveCountryCode(req: Request): Promise<string> {
-  // Dev override: ?country=XX on the request
-  const override = req.query?.country as string | undefined;
-  if (override && /^[A-Za-z]{2}$/.test(override)) {
-    return override.toUpperCase();
+  // Dev-only override: ?country=XX — never active in production
+  if (process.env.NODE_ENV !== "production") {
+    const override = req.query?.country as string | undefined;
+    if (override && /^[A-Za-z]{2}$/.test(override)) {
+      return override.toUpperCase();
+    }
   }
 
   const ip = extractIp(req);
@@ -33,7 +35,7 @@ export async function resolveCountryCode(req: Request): Promise<string> {
 
   try {
     const response = await axios.get(
-      `http://ip-api.com/json/${encodeURIComponent(ip)}?fields=countryCode,status`,
+      `https://ip-api.com/json/${encodeURIComponent(ip)}?fields=countryCode,status`,
       { timeout: GEOIP_TIMEOUT_MS }
     );
     const data = response.data as { countryCode?: string; status?: string };
