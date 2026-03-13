@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost } from "@shared/schema.js";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType } from "@shared/schema.js";
 import type { SQL } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -1399,14 +1399,14 @@ export async function getActiveSocialConnections(): Promise<SocialConnection[]> 
 }
 
 export async function createSocialConnection(data: InsertSocialConnection): Promise<SocialConnection> {
-  const [created] = await db.insert(socialConnections).values(data).returning();
+  const [created] = await db.insert(socialConnections).values(data as any).returning();
   return created;
 }
 
 export async function updateSocialConnection(id: number, data: Partial<InsertSocialConnection>): Promise<SocialConnection | undefined> {
   const [updated] = await db
     .update(socialConnections)
-    .set({ ...data, updatedAt: new Date() })
+    .set({ ...data, updatedAt: new Date() } as any)
     .where(eq(socialConnections.id, id))
     .returning();
   return updated;
@@ -1446,14 +1446,14 @@ export async function getScheduledPostById(id: number): Promise<ScheduledPost | 
 }
 
 export async function createScheduledPost(data: InsertScheduledPost): Promise<ScheduledPost> {
-  const [created] = await db.insert(scheduledPosts).values(data).returning();
+  const [created] = await db.insert(scheduledPosts).values(data as any).returning();
   return created;
 }
 
 export async function updateScheduledPost(id: number, data: Partial<InsertScheduledPost & { status: string; publishedAt: string; platformPostId: string; platformPostUrl: string; errorMessage: string }>): Promise<ScheduledPost | undefined> {
   const [updated] = await db
     .update(scheduledPosts)
-    .set({ ...data, updatedAt: new Date() })
+    .set({ ...data, updatedAt: new Date() } as any)
     .where(eq(scheduledPosts.id, id))
     .returning();
   return updated;
@@ -1530,4 +1530,125 @@ export async function getCalendarPosts(from: Date, to: Date): Promise<ScheduledP
       )
     )
     .orderBy(scheduledPosts.scheduledAt);
+}
+
+// ─── Morgan: Conversations ───────────────────────────────────────────────────
+
+export async function getMorganConversations(userId?: number): Promise<MorganConversation[]> {
+  const conditions: SQL[] = [eq(morganConversations.isArchived, false)];
+  if (userId) conditions.push(eq(morganConversations.userId, userId));
+  return db
+    .select()
+    .from(morganConversations)
+    .where(and(...conditions))
+    .orderBy(desc(morganConversations.updatedAt));
+}
+
+export async function getMorganConversation(id: number): Promise<MorganConversation | undefined> {
+  const result = await db
+    .select()
+    .from(morganConversations)
+    .where(eq(morganConversations.id, id))
+    .limit(1);
+  return result[0];
+}
+
+export async function createMorganConversation(data: InsertMorganConversation): Promise<MorganConversation> {
+  const result = await db.insert(morganConversations).values(data).returning();
+  return result[0];
+}
+
+export async function archiveMorganConversation(id: number): Promise<void> {
+  await db
+    .update(morganConversations)
+    .set({ isArchived: true, updatedAt: new Date() })
+    .where(eq(morganConversations.id, id));
+}
+
+// ─── Morgan: Messages ────────────────────────────────────────────────────────
+
+export async function getMorganMessages(conversationId: number, limit = 100): Promise<MorganMessage[]> {
+  return db
+    .select()
+    .from(morganMessages)
+    .where(eq(morganMessages.conversationId, conversationId))
+    .orderBy(asc(morganMessages.createdAt))
+    .limit(limit);
+}
+
+export async function createMorganMessage(data: InsertMorganMessage): Promise<MorganMessage> {
+  const result = await db.insert(morganMessages).values(data).returning();
+  // Update conversation updatedAt
+  await db
+    .update(morganConversations)
+    .set({ updatedAt: new Date() })
+    .where(eq(morganConversations.id, data.conversationId));
+  return result[0];
+}
+
+export async function getRecentMorganContext(limit = 20): Promise<MorganMessage[]> {
+  // Get the most recent messages across all conversations for context building
+  return db
+    .select()
+    .from(morganMessages)
+    .orderBy(desc(morganMessages.createdAt))
+    .limit(limit);
+}
+
+// ─── Morgan: Memory ──────────────────────────────────────────────────────────
+
+export async function getMorganMemories(opts?: {
+  type?: MorganMemoryType;
+  minImportance?: number;
+  limit?: number;
+}): Promise<MorganMemory[]> {
+  const conditions: SQL[] = [];
+  if (opts?.type) conditions.push(eq(morganMemory.type, opts.type));
+  if (opts?.minImportance) conditions.push(gte(morganMemory.importance, opts.minImportance));
+  // Exclude expired memories
+  conditions.push(
+    sql`(${morganMemory.expiresAt} IS NULL OR ${morganMemory.expiresAt} > NOW())`
+  );
+
+  return db
+    .select()
+    .from(morganMemory)
+    .where(and(...conditions))
+    .orderBy(desc(morganMemory.importance), desc(morganMemory.createdAt))
+    .limit(opts?.limit ?? 50);
+}
+
+export async function createMorganMemory(data: InsertMorganMemory): Promise<MorganMemory> {
+  const result = await db.insert(morganMemory).values(data).returning();
+  return result[0];
+}
+
+export async function updateMorganMemory(
+  id: number,
+  data: Partial<Pick<MorganMemory, "content" | "importance" | "expiresAt">>
+): Promise<MorganMemory> {
+  const result = await db
+    .update(morganMemory)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(morganMemory.id, id))
+    .returning();
+  return result[0];
+}
+
+export async function deleteMorganMemory(id: number): Promise<void> {
+  await db.delete(morganMemory).where(eq(morganMemory.id, id));
+}
+
+export async function searchMorganMemory(query: string): Promise<MorganMemory[]> {
+  return db
+    .select()
+    .from(morganMemory)
+    .where(
+      and(
+        sql`${morganMemory.content} ILIKE ${"%" + query + "%"}`,
+        sql`(${morganMemory.expiresAt} IS NULL OR ${morganMemory.expiresAt} > NOW())`
+      )
+    )
+    .orderBy(desc(morganMemory.importance))
+    .limit(20);
 }

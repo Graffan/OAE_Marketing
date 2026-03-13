@@ -19,6 +19,7 @@ import AiStudioPage from "@/pages/AiStudioPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
 import SchedulePage from "@/pages/SchedulePage";
 import CalendarPage from "@/pages/CalendarPage";
+import MorganPage from "@/pages/MorganPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -31,6 +32,7 @@ import {
   BarChart3,
   CalendarDays,
   Send,
+  BrainCircuit,
   Settings,
   LogOut,
   Sun,
@@ -84,6 +86,7 @@ function Sidebar() {
     { href: "/ai-studio",    label: "AI Studio",    icon: Sparkles,        roles: OPERATOR_AND_ABOVE },
     { href: "/schedule",     label: "Schedule",     icon: Send,            roles: OPERATOR_AND_ABOVE },
     { href: "/calendar",     label: "Calendar",     icon: CalendarDays,    roles: null },
+    { href: "/morgan",       label: "Morgan",       icon: BrainCircuit,    roles: null },
     { href: "/analytics",    label: "Analytics",    icon: BarChart3,       roles: null },
     { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
   ].filter(({ roles }) => !roles || roles.includes(role));
@@ -221,6 +224,7 @@ export default function App() {
             <Route path="/ai-studio"    component={AiStudioPage} />
             <Route path="/schedule"     component={SchedulePage} />
             <Route path="/calendar"     component={CalendarPage} />
+            <Route path="/morgan"       component={MorganPage} />
             <Route path="/analytics"    component={AnalyticsPage} />
             <Route path="/admin"        component={AdminPage} />
             <Route>

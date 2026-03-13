@@ -762,6 +762,103 @@ export const insertScheduledPostSchema = createInsertSchema(scheduledPosts).pick
 export type ScheduledPost = typeof scheduledPosts.$inferSelect;
 export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
 
+// ─── Morgan: Conversations ───────────────────────────────────────────────────
+
+export const morganConversations = pgTable(
+  "morgan_conversations",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title"),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    channel: text("channel").notNull().default("app"), // 'app' | 'signal'
+    isArchived: boolean("is_archived").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    userIdx: index("morgan_conv_user_idx").on(table.userId),
+    channelIdx: index("morgan_conv_channel_idx").on(table.channel),
+  })
+);
+
+// ─── Morgan: Messages ────────────────────────────────────────────────────────
+
+export const MORGAN_MESSAGE_ROLES = ["user", "morgan", "system"] as const;
+export type MorganMessageRole = (typeof MORGAN_MESSAGE_ROLES)[number];
+
+export const morganMessages = pgTable(
+  "morgan_messages",
+  {
+    id: serial("id").primaryKey(),
+    conversationId: integer("conversation_id")
+      .notNull()
+      .references(() => morganConversations.id, { onDelete: "cascade" }),
+    role: text("role").notNull(), // 'user' | 'morgan' | 'system'
+    content: text("content").notNull(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    metadata: json("metadata"), // token counts, model used, latency, etc.
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    convIdx: index("morgan_msg_conv_idx").on(table.conversationId),
+    roleIdx: index("morgan_msg_role_idx").on(table.role),
+  })
+);
+
+// ─── Morgan: Memory ──────────────────────────────────────────────────────────
+
+export const MORGAN_MEMORY_TYPES = [
+  "preference",   // team member preferences (posting style, approval threshold, etc.)
+  "decision",     // key decisions made (e.g. "we agreed to focus on TikTok first")
+  "context",      // ongoing project context (e.g. "new film launching March 20")
+  "feedback",     // corrections/guidance from the team
+  "learning",     // patterns Morgan learned from campaign performance
+] as const;
+export type MorganMemoryType = (typeof MORGAN_MEMORY_TYPES)[number];
+
+export const morganMemory = pgTable(
+  "morgan_memory",
+  {
+    id: serial("id").primaryKey(),
+    type: text("type").notNull(), // MorganMemoryType
+    content: text("content").notNull(),
+    source: text("source"), // 'chat', 'signal', 'system', 'campaign_analysis'
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    importance: integer("importance").notNull().default(5), // 1-10, higher = more relevant
+    expiresAt: timestamp("expires_at"), // null = permanent
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    typeIdx: index("morgan_mem_type_idx").on(table.type),
+    importanceIdx: index("morgan_mem_importance_idx").on(table.importance),
+  })
+);
+
+export const insertMorganConversationSchema = createInsertSchema(morganConversations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMorganMessageSchema = createInsertSchema(morganMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMorganMemorySchema = createInsertSchema(morganMemory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MorganConversation = typeof morganConversations.$inferSelect;
+export type InsertMorganConversation = z.infer<typeof insertMorganConversationSchema>;
+export type MorganMessage = typeof morganMessages.$inferSelect;
+export type InsertMorganMessage = z.infer<typeof insertMorganMessageSchema>;
+export type MorganMemory = typeof morganMemory.$inferSelect;
+export type InsertMorganMemory = z.infer<typeof insertMorganMemorySchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

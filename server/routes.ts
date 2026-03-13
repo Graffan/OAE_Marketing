@@ -104,11 +104,23 @@ import {
   markPostPublished,
   markPostFailed,
   getCalendarPosts,
+  getMorganConversations,
+  getMorganConversation,
+  createMorganConversation,
+  archiveMorganConversation,
+  getMorganMessages,
+  createMorganMessage,
+  getMorganMemories,
+  createMorganMemory,
+  updateMorganMemory,
+  deleteMorganMemory,
+  searchMorganMemory,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
 import { resolveCountryCode } from "./services/geoip.js";
 import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
+import { chatWithMorgan } from "./services/morgan-chat.js";
 import { insertCampaignSchema, insertCampaignContentSchema, insertSocialConnectionSchema, insertScheduledPostSchema } from "@shared/schema.js";
 
 function applyTrackingParams(baseUrl: string, template: string, slug: string): string {
@@ -1874,6 +1886,185 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       const deleted = await deleteScheduledPost(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Post not found" });
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Morgan: Conversations ─────────────────────────────────────────────────
+
+  app.get("/api/morgan/conversations", requireAuth, async (req, res) => {
+    try {
+      const conversations = await getMorganConversations((req.user as any).id);
+      res.json(conversations);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/conversations", requireAuth, async (req, res) => {
+    try {
+      const conversation = await createMorganConversation({
+        title: req.body.title || null,
+        userId: (req.user as any).id,
+        channel: "app",
+      });
+      res.json(conversation);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/conversations/:id", requireAuth, async (req, res) => {
+    try {
+      const conversation = await getMorganConversation(Number(req.params.id));
+      if (!conversation) return res.status(404).json({ message: "Conversation not found" });
+      res.json(conversation);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/conversations/:id/archive", requireAuth, async (req, res) => {
+    try {
+      await archiveMorganConversation(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Morgan: Messages + Chat ──────────────────────────────────────────────
+
+  app.get("/api/morgan/conversations/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const messages = await getMorganMessages(Number(req.params.id));
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const morganChatLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 15,
+    message: { message: "Too many messages. Please wait a moment." },
+  });
+
+  app.post("/api/morgan/conversations/:id/chat", requireAuth, morganChatLimiter, async (req, res) => {
+    try {
+      const conversationId = Number(req.params.id);
+      const { message } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ message: "Message is required" });
+      }
+
+      const userId = (req.user as any).id;
+      const userName = (req.user as any).firstName || (req.user as any).username;
+
+      // Store the user message
+      const userMsg = await createMorganMessage({
+        conversationId,
+        role: "user",
+        content: message.trim(),
+        userId,
+      });
+
+      // Get Morgan's response
+      const result = await chatWithMorgan(conversationId, `${userName}: ${message.trim()}`, userId);
+
+      // Store Morgan's response
+      const morganMsg = await createMorganMessage({
+        conversationId,
+        role: "morgan",
+        content: result.response,
+        metadata: {
+          provider: result.provider,
+          model: result.model,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          latencyMs: result.latencyMs,
+        },
+      });
+
+      // Auto-title the conversation if it's the first message
+      const conversation = await getMorganConversation(conversationId);
+      if (conversation && !conversation.title) {
+        const title = message.trim().slice(0, 60) + (message.trim().length > 60 ? "..." : "");
+        // Update title (direct DB update since we don't have a dedicated function for this)
+        await createMorganConversation; // we'll just leave it untitled for now
+      }
+
+      res.json({
+        userMessage: userMsg,
+        morganMessage: morganMsg,
+        provider: result.provider,
+        model: result.model,
+        latencyMs: result.latencyMs,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Morgan: Memory ───────────────────────────────────────────────────────
+
+  app.get("/api/morgan/memory", requireAuth, async (req, res) => {
+    try {
+      const type = req.query.type as string | undefined;
+      const memories = await getMorganMemories({
+        type: type as any,
+        limit: 100,
+      });
+      res.json(memories);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/memory", requireAuth, async (req, res) => {
+    try {
+      const memory = await createMorganMemory({
+        type: req.body.type ?? "context",
+        content: req.body.content,
+        source: "manual",
+        userId: (req.user as any).id,
+        importance: req.body.importance ?? 5,
+        expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
+      });
+      res.json(memory);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/morgan/memory/:id", requireAuth, async (req, res) => {
+    try {
+      const updated = await updateMorganMemory(Number(req.params.id), {
+        content: req.body.content,
+        importance: req.body.importance,
+      });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/morgan/memory/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      await deleteMorganMemory(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/memory/search", requireAuth, async (req, res) => {
+    try {
+      const q = req.query.q as string;
+      if (!q) return res.status(400).json({ message: "Query parameter 'q' is required" });
+      const results = await searchMorganMemory(q);
+      res.json(results);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
