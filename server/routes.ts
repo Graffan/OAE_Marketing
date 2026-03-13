@@ -115,12 +115,20 @@ import {
   updateMorganMemory,
   deleteMorganMemory,
   searchMorganMemory,
+  getMorganTasks,
+  createMorganTask,
+  updateMorganTask,
+  getMorganAutoApproveRules,
+  createMorganAutoApproveRule,
+  updateMorganAutoApproveRule,
+  deleteMorganAutoApproveRule,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
 import { resolveCountryCode } from "./services/geoip.js";
 import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
 import { chatWithMorgan } from "./services/morgan-chat.js";
+import { runTask as runMorganTask, startMorganScheduler } from "./services/morgan-daily-cycle.js";
 import { insertCampaignSchema, insertCampaignContentSchema, insertSocialConnectionSchema, insertScheduledPostSchema } from "@shared/schema.js";
 
 function applyTrackingParams(baseUrl: string, template: string, slug: string): string {
@@ -2069,6 +2077,96 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       res.status(500).json({ message: err.message });
     }
   });
+
+  // ─── Morgan: Tasks (Autonomous Cycle) ───────────────────────────────────────
+
+  app.get("/api/morgan/tasks", requireAuth, async (req, res) => {
+    try {
+      const tasks = await getMorganTasks(50);
+      res.json(tasks);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/tasks/:type/run", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const taskType = req.params.type;
+      const task = await createMorganTask({
+        taskType,
+        status: "running",
+        scheduledAt: new Date(),
+        startedAt: new Date(),
+      });
+
+      try {
+        const result = await runMorganTask(taskType);
+        await updateMorganTask(task.id, {
+          status: "completed",
+          completedAt: new Date(),
+          result,
+        });
+        res.json({ task: { ...task, status: "completed", result } });
+      } catch (runErr: any) {
+        await updateMorganTask(task.id, {
+          status: "failed",
+          completedAt: new Date(),
+          error: runErr.message,
+        });
+        res.json({ task: { ...task, status: "failed", error: runErr.message } });
+      }
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Morgan: Auto-Approve Rules ────────────────────────────────────────────
+
+  app.get("/api/morgan/auto-approve-rules", requireAuth, async (req, res) => {
+    try {
+      const rules = await getMorganAutoApproveRules();
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/auto-approve-rules", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const rule = await createMorganAutoApproveRule({
+        name: req.body.name,
+        description: req.body.description || null,
+        isActive: req.body.isActive ?? true,
+        conditions: req.body.conditions,
+        createdById: (req.user as any).id,
+      });
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/morgan/auto-approve-rules/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const updated = await updateMorganAutoApproveRule(Number(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "Rule not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/morgan/auto-approve-rules/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      await deleteMorganAutoApproveRule(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Start Morgan's autonomous scheduler
+  startMorganScheduler();
 
   const server = http.createServer(app);
   return server;

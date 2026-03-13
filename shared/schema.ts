@@ -459,6 +459,9 @@ export const NOTIFICATION_TYPES = [
   "strong_clip_detected",
   "sync_error",
   "deleted_source_file",
+  "system",
+  "morgan_briefing",
+  "morgan_digest",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -858,6 +861,73 @@ export type MorganMessage = typeof morganMessages.$inferSelect;
 export type InsertMorganMessage = z.infer<typeof insertMorganMessageSchema>;
 export type MorganMemory = typeof morganMemory.$inferSelect;
 export type InsertMorganMemory = z.infer<typeof insertMorganMemorySchema>;
+
+// ─── Morgan: Tasks (Autonomous Cycle) ────────────────────────────────────────
+
+export const MORGAN_TASK_TYPES = [
+  "morning_scan",
+  "content_draft",
+  "morning_briefing",
+  "publish_approved",
+  "evening_digest",
+  "weekly_review",
+] as const;
+export type MorganTaskType = (typeof MORGAN_TASK_TYPES)[number];
+
+export const MORGAN_TASK_STATUSES = ["pending", "running", "completed", "failed", "skipped"] as const;
+export type MorganTaskStatus = (typeof MORGAN_TASK_STATUSES)[number];
+
+export const morganTasks = pgTable(
+  "morgan_tasks",
+  {
+    id: serial("id").primaryKey(),
+    taskType: text("task_type").notNull(), // MorganTaskType
+    status: text("status").notNull().default("pending"), // MorganTaskStatus
+    scheduledAt: timestamp("scheduled_at").notNull(),
+    startedAt: timestamp("started_at"),
+    completedAt: timestamp("completed_at"),
+    result: json("result"), // output/summary of what the task produced
+    error: text("error"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    typeIdx: index("morgan_task_type_idx").on(table.taskType),
+    statusIdx: index("morgan_task_status_idx").on(table.status),
+    scheduledIdx: index("morgan_task_scheduled_idx").on(table.scheduledAt),
+  })
+);
+
+// ─── Morgan: Auto-Approve Rules ──────────────────────────────────────────────
+
+export const morganAutoApproveRules = pgTable(
+  "morgan_auto_approve_rules",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    description: text("description"),
+    isActive: boolean("is_active").notNull().default(true),
+    conditions: json("conditions").notNull(), // { type: 'recurring_series' | 'high_performer' | 'template_match', threshold?: number, templateId?: number }
+    createdById: integer("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  }
+);
+
+export const insertMorganTaskSchema = createInsertSchema(morganTasks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMorganAutoApproveRuleSchema = createInsertSchema(morganAutoApproveRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MorganTask = typeof morganTasks.$inferSelect;
+export type InsertMorganTask = z.infer<typeof insertMorganTaskSchema>;
+export type MorganAutoApproveRule = typeof morganAutoApproveRules.$inferSelect;
+export type InsertMorganAutoApproveRule = z.infer<typeof insertMorganAutoApproveRuleSchema>;
 
 // ─── Exported Types ───────────────────────────────────────────────────────────
 

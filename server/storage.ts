@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory, morganTasks, morganAutoApproveRules } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType } from "@shared/schema.js";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType, MorganTask, InsertMorganTask, MorganAutoApproveRule, InsertMorganAutoApproveRule } from "@shared/schema.js";
 import type { SQL } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -1651,4 +1651,80 @@ export async function searchMorganMemory(query: string): Promise<MorganMemory[]>
     )
     .orderBy(desc(morganMemory.importance))
     .limit(20);
+}
+
+// ─── Morgan: Tasks ───────────────────────────────────────────────────────────
+
+export async function getMorganTasks(limit = 50): Promise<MorganTask[]> {
+  return db
+    .select()
+    .from(morganTasks)
+    .orderBy(desc(morganTasks.scheduledAt))
+    .limit(limit);
+}
+
+export async function getMorganTasksByDate(date: Date): Promise<MorganTask[]> {
+  const dayEnd = new Date(date);
+  dayEnd.setHours(23, 59, 59, 999);
+  return db
+    .select()
+    .from(morganTasks)
+    .where(
+      and(
+        gte(morganTasks.scheduledAt, date),
+        lte(morganTasks.scheduledAt, dayEnd)
+      )
+    )
+    .orderBy(morganTasks.scheduledAt);
+}
+
+export async function createMorganTask(data: InsertMorganTask): Promise<MorganTask> {
+  const [created] = await db.insert(morganTasks).values(data as any).returning();
+  return created;
+}
+
+export async function updateMorganTask(
+  id: number,
+  data: Partial<Pick<MorganTask, "status" | "completedAt" | "result" | "error">>
+): Promise<MorganTask> {
+  const [updated] = await db
+    .update(morganTasks)
+    .set(data as any)
+    .where(eq(morganTasks.id, id))
+    .returning();
+  return updated;
+}
+
+// ─── Morgan: Auto-Approve Rules ──────────────────────────────────────────────
+
+export async function getMorganAutoApproveRules(): Promise<MorganAutoApproveRule[]> {
+  return db.select().from(morganAutoApproveRules).orderBy(morganAutoApproveRules.name);
+}
+
+export async function getActiveMorganAutoApproveRules(): Promise<MorganAutoApproveRule[]> {
+  return db
+    .select()
+    .from(morganAutoApproveRules)
+    .where(eq(morganAutoApproveRules.isActive, true));
+}
+
+export async function createMorganAutoApproveRule(data: InsertMorganAutoApproveRule): Promise<MorganAutoApproveRule> {
+  const [created] = await db.insert(morganAutoApproveRules).values(data as any).returning();
+  return created;
+}
+
+export async function updateMorganAutoApproveRule(
+  id: number,
+  data: Partial<InsertMorganAutoApproveRule>
+): Promise<MorganAutoApproveRule | undefined> {
+  const [updated] = await db
+    .update(morganAutoApproveRules)
+    .set({ ...data, updatedAt: new Date() } as any)
+    .where(eq(morganAutoApproveRules.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteMorganAutoApproveRule(id: number): Promise<void> {
+  await db.delete(morganAutoApproveRules).where(eq(morganAutoApproveRules.id, id));
 }
