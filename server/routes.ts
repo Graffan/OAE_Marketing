@@ -140,6 +140,36 @@ import {
   createPressKitItem,
   updatePressKitItem,
   deletePressKitItem,
+  getAudiencePersonas,
+  createAudiencePersona,
+  updateAudiencePersona,
+  deleteAudiencePersona,
+  getEngagementTemplates,
+  createEngagementTemplate,
+  updateEngagementTemplate,
+  deleteEngagementTemplate,
+  getEmailSubscribers,
+  getEmailSubscriberCount,
+  createEmailSubscriber,
+  unsubscribeEmail,
+  deleteEmailSubscriber,
+  getEmailCampaigns,
+  getEmailCampaignById,
+  createEmailCampaign,
+  updateEmailCampaign,
+  deleteEmailCampaign,
+  getCompetitorTracks,
+  createCompetitorTrack,
+  updateCompetitorTrack,
+  deleteCompetitorTrack,
+  getReleaseWindowStrategies,
+  createReleaseWindowStrategy,
+  updateReleaseWindowStrategy,
+  deleteReleaseWindowStrategy,
+  getCrossPromotions,
+  createCrossPromotion,
+  updateCrossPromotionStatus,
+  deleteCrossPromotion,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -2389,6 +2419,195 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // ─── Phase 11: Audience Personas ─────────────────────────────────────────────
+
+  app.get("/api/audience/personas", requireAuth, async (_req, res) => {
+    try { res.json(await getAudiencePersonas()); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/audience/personas", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createAudiencePersona(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/audience/personas/:id", requireOperator, async (req, res) => {
+    try {
+      const result = await updateAudiencePersona(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/audience/personas/:id", requireOperator, async (req, res) => {
+    try { await deleteAudiencePersona(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Engagement Templates ────────────────────────────────────────────
+
+  app.get("/api/engagement/templates", requireAuth, async (req, res) => {
+    try {
+      const category = req.query.category ? String(req.query.category) : undefined;
+      res.json(await getEngagementTemplates(category));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/engagement/templates", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createEngagementTemplate(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/engagement/templates/:id", requireOperator, async (req, res) => {
+    try {
+      const result = await updateEngagementTemplate(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/engagement/templates/:id", requireOperator, async (req, res) => {
+    try { await deleteEngagementTemplate(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Email Subscribers ───────────────────────────────────────────────
+
+  app.get("/api/email/subscribers", requireAuth, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.isActive !== undefined) filters.isActive = req.query.isActive === "true";
+      if (req.query.source) filters.source = String(req.query.source);
+      res.json(await getEmailSubscribers(filters));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/email/subscribers/count", requireAuth, async (_req, res) => {
+    try { res.json({ count: await getEmailSubscriberCount() }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/email/subscribers", async (req, res) => {
+    // Public endpoint for smart link email capture
+    try {
+      const { email, name, source, titleId } = req.body;
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Valid email required" });
+      }
+      const subscriber = await createEmailSubscriber({ email, name, source: source ?? "smart_link", titleId: titleId ?? null });
+      res.status(201).json(subscriber);
+    } catch (err: any) {
+      if (err.message?.includes("unique")) {
+        return res.status(409).json({ message: "Already subscribed" });
+      }
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/email/subscribers/:id/unsubscribe", async (req, res) => {
+    try { await unsubscribeEmail(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/email/subscribers/:id", requireOperator, async (req, res) => {
+    try { await deleteEmailSubscriber(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Email Campaigns ─────────────────────────────────────────────────
+
+  app.get("/api/email/campaigns", requireAuth, async (_req, res) => {
+    try { res.json(await getEmailCampaigns()); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.get("/api/email/campaigns/:id", requireAuth, async (req, res) => {
+    try {
+      const campaign = await getEmailCampaignById(Number(req.params.id));
+      if (!campaign) return res.status(404).json({ message: "Not found" });
+      res.json(campaign);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/email/campaigns", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createEmailCampaign(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/email/campaigns/:id", requireOperator, async (req, res) => {
+    try {
+      const result = await updateEmailCampaign(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/email/campaigns/:id", requireOperator, async (req, res) => {
+    try { await deleteEmailCampaign(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Competitor Tracking ─────────────────────────────────────────────
+
+  app.get("/api/competitors", requireAuth, async (_req, res) => {
+    try { res.json(await getCompetitorTracks()); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/competitors", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createCompetitorTrack(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/competitors/:id", requireOperator, async (req, res) => {
+    try {
+      const result = await updateCompetitorTrack(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/competitors/:id", requireOperator, async (req, res) => {
+    try { await deleteCompetitorTrack(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Release Window Strategies ───────────────────────────────────────
+
+  app.get("/api/release-strategies", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId ? Number(req.query.titleId) : undefined;
+      res.json(await getReleaseWindowStrategies(titleId));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/release-strategies", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createReleaseWindowStrategy(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/release-strategies/:id", requireOperator, async (req, res) => {
+    try {
+      const result = await updateReleaseWindowStrategy(Number(req.params.id), req.body);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/release-strategies/:id", requireOperator, async (req, res) => {
+    try { await deleteReleaseWindowStrategy(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  // ─── Phase 11: Cross-Promotions ────────────────────────────────────────────────
+
+  app.get("/api/cross-promotions", requireAuth, async (req, res) => {
+    try {
+      const status = req.query.status ? String(req.query.status) : undefined;
+      res.json(await getCrossPromotions(status));
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.post("/api/cross-promotions", requireOperator, async (req, res) => {
+    try { res.status(201).json(await createCrossPromotion(req.body)); } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.patch("/api/cross-promotions/:id/status", requireOperator, async (req, res) => {
+    try {
+      const result = await updateCrossPromotionStatus(Number(req.params.id), req.body.status);
+      if (!result) return res.status(404).json({ message: "Not found" });
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ message: err.message }); }
+  });
+
+  app.delete("/api/cross-promotions/:id", requireOperator, async (req, res) => {
+    try { await deleteCrossPromotion(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
   // Start Morgan's autonomous scheduler

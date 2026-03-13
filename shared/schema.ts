@@ -1062,6 +1062,186 @@ export type InsertSocialProfile = z.infer<typeof insertSocialProfileSchema>;
 export type PressKitItem = typeof pressKitItems.$inferSelect;
 export type InsertPressKitItem = z.infer<typeof insertPressKitItemSchema>;
 
+// ─── Phase 11: Audience Personas ──────────────────────────────────────────────
+
+export const audiencePersonas = pgTable("audience_personas", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g. "Horror Fans 18-24", "International Genre Collectors"
+  description: text("description"),
+  demographics: json("demographics"), // { ageRange, gender, locations[], interests[] }
+  platforms: json("platforms").$type<string[]>(), // preferred platforms
+  contentPreferences: json("content_preferences"), // { formats[], hooks[], bestTimes[] }
+  titleAffinities: json("title_affinities").$type<number[]>(), // title IDs this persona engages with
+  estimatedSize: integer("estimated_size"),
+  isAiGenerated: boolean("is_ai_generated").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 11: Engagement Templates ──────────────────────────────────────────
+
+export const engagementTemplates = pgTable("engagement_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // comment_reply, dm_response, mention_response, review_response
+  platform: text("platform"), // null = all platforms
+  triggerPattern: text("trigger_pattern"), // regex or keyword pattern
+  templateText: text("template_text").notNull(),
+  variables: json("variables").$type<string[]>(), // placeholder vars like {film_title}, {user_name}
+  isActive: boolean("is_active").notNull().default(true),
+  usageCount: integer("usage_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 11: Email Subscribers ─────────────────────────────────────────────
+
+export const emailSubscribers = pgTable("email_subscribers", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  name: text("name"),
+  source: text("source").notNull().default("smart_link"), // smart_link, manual, import
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "set null" }), // which title led them here
+  isActive: boolean("is_active").notNull().default(true),
+  unsubscribedAt: timestamp("unsubscribed_at"),
+  metadata: json("metadata"), // { country, referrer, etc. }
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  emailIdx: index("email_subscriber_email_idx").on(table.email),
+  sourceIdx: index("email_subscriber_source_idx").on(table.source),
+}));
+
+// ─── Phase 11: Email Campaigns ───────────────────────────────────────────────
+
+export const EMAIL_CAMPAIGN_TYPES = [
+  "new_release", "monthly_digest", "festival_win",
+  "trailer_drop", "custom",
+] as const;
+
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // EMAIL_CAMPAIGN_TYPES
+  subject: text("subject").notNull(),
+  bodyHtml: text("body_html"),
+  bodyText: text("body_text"),
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("draft"), // draft, scheduled, sending, sent, failed
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  recipientCount: integer("recipient_count"),
+  openCount: integer("open_count").default(0),
+  clickCount: integer("click_count").default(0),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 11: Competitor Tracking ───────────────────────────────────────────
+
+export const competitorTracks = pgTable("competitor_tracks", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // company name
+  website: text("website"),
+  platforms: json("platforms").$type<Array<{ platform: string; handle: string; url: string }>>(),
+  notes: text("notes"),
+  lastChecked: timestamp("last_checked"),
+  followerData: json("follower_data"), // { platform: count }
+  postingFrequency: text("posting_frequency"), // "3x/week", "daily", etc.
+  strengthNotes: text("strength_notes"),
+  weaknessNotes: text("weakness_notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 11: Release Window Strategies ─────────────────────────────────────
+
+export const CADENCE_TYPES = ["launch", "sustain", "catalog", "event", "custom"] as const;
+
+export const releaseWindowStrategies = pgTable("release_window_strategies", {
+  id: serial("id").primaryKey(),
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "cascade" }).notNull(),
+  cadenceType: text("cadence_type").notNull(), // CADENCE_TYPES
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date"),
+  postsPerWeek: integer("posts_per_week").notNull().default(3),
+  platforms: json("platforms").$type<string[]>(),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 11: Cross-Promotion Suggestions ───────────────────────────────────
+
+export const crossPromotions = pgTable("cross_promotions", {
+  id: serial("id").primaryKey(),
+  sourceTitleId: integer("source_title_id").references(() => titles.id, { onDelete: "cascade" }).notNull(),
+  targetTitleId: integer("target_title_id").references(() => titles.id, { onDelete: "cascade" }).notNull(),
+  reason: text("reason"), // "shared genre + similar audience demographics"
+  suggestedCopy: text("suggested_copy"),
+  overlapScore: integer("overlap_score"), // 0-100
+  status: text("status").notNull().default("suggested"), // suggested, approved, used, dismissed
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── Phase 11: Insert Schemas ────────────────────────────────────────────────
+
+export const insertAudiencePersonaSchema = createInsertSchema(audiencePersonas).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEngagementTemplateSchema = createInsertSchema(engagementTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertEmailSubscriberSchema = createInsertSchema(emailSubscribers).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCompetitorTrackSchema = createInsertSchema(competitorTracks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertReleaseWindowStrategySchema = createInsertSchema(releaseWindowStrategies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCrossPromotionSchema = createInsertSchema(crossPromotions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type AudiencePersona = typeof audiencePersonas.$inferSelect;
+export type InsertAudiencePersona = z.infer<typeof insertAudiencePersonaSchema>;
+export type EngagementTemplate = typeof engagementTemplates.$inferSelect;
+export type InsertEngagementTemplate = z.infer<typeof insertEngagementTemplateSchema>;
+export type EmailSubscriber = typeof emailSubscribers.$inferSelect;
+export type InsertEmailSubscriber = z.infer<typeof insertEmailSubscriberSchema>;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+export type CompetitorTrack = typeof competitorTracks.$inferSelect;
+export type InsertCompetitorTrack = z.infer<typeof insertCompetitorTrackSchema>;
+export type ReleaseWindowStrategy = typeof releaseWindowStrategies.$inferSelect;
+export type InsertReleaseWindowStrategy = z.infer<typeof insertReleaseWindowStrategySchema>;
+export type CrossPromotion = typeof crossPromotions.$inferSelect;
+export type InsertCrossPromotion = z.infer<typeof insertCrossPromotionSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

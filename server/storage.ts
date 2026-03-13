@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory, morganTasks, morganAutoApproveRules, clickEvents, brandAssets, brandVoiceRules, socialProfiles, pressKitItems } from "@shared/schema.js";
-import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType, MorganTask, InsertMorganTask, MorganAutoApproveRule, InsertMorganAutoApproveRule, ClickEvent, InsertClickEvent, BrandAsset, InsertBrandAsset, BrandVoiceRule, InsertBrandVoiceRule, SocialProfile, InsertSocialProfile, PressKitItem, InsertPressKitItem } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory, morganTasks, morganAutoApproveRules, clickEvents, brandAssets, brandVoiceRules, socialProfiles, pressKitItems, audiencePersonas, engagementTemplates, emailSubscribers, emailCampaigns, competitorTracks, releaseWindowStrategies, crossPromotions } from "@shared/schema.js";
+import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc, ne } from "drizzle-orm";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType, MorganTask, InsertMorganTask, MorganAutoApproveRule, InsertMorganAutoApproveRule, ClickEvent, InsertClickEvent, BrandAsset, InsertBrandAsset, BrandVoiceRule, InsertBrandVoiceRule, SocialProfile, InsertSocialProfile, PressKitItem, InsertPressKitItem, AudiencePersona, InsertAudiencePersona, EngagementTemplate, InsertEngagementTemplate, EmailSubscriber, InsertEmailSubscriber, EmailCampaign, InsertEmailCampaign, CompetitorTrack, InsertCompetitorTrack, ReleaseWindowStrategy, InsertReleaseWindowStrategy, CrossPromotion, InsertCrossPromotion } from "@shared/schema.js";
 import type { SQL } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -1931,4 +1931,161 @@ export async function updatePressKitItem(id: number, data: Partial<InsertPressKi
 
 export async function deletePressKitItem(id: number): Promise<void> {
   await db.delete(pressKitItems).where(eq(pressKitItems.id, id));
+}
+
+// ─── Phase 11: Audience Personas ─────────────────────────────────────────────
+
+export async function getAudiencePersonas(): Promise<AudiencePersona[]> {
+  return db.select().from(audiencePersonas).orderBy(desc(audiencePersonas.createdAt));
+}
+
+export async function createAudiencePersona(data: InsertAudiencePersona): Promise<AudiencePersona> {
+  const [created] = await db.insert(audiencePersonas).values(data as any).returning();
+  return created;
+}
+
+export async function updateAudiencePersona(id: number, data: Partial<InsertAudiencePersona>): Promise<AudiencePersona | undefined> {
+  const [updated] = await db.update(audiencePersonas).set({ ...data, updatedAt: new Date() } as any).where(eq(audiencePersonas.id, id)).returning();
+  return updated;
+}
+
+export async function deleteAudiencePersona(id: number): Promise<void> {
+  await db.delete(audiencePersonas).where(eq(audiencePersonas.id, id));
+}
+
+// ─── Phase 11: Engagement Templates ──────────────────────────────────────────
+
+export async function getEngagementTemplates(category?: string): Promise<EngagementTemplate[]> {
+  const condition = category ? eq(engagementTemplates.category, category) : undefined;
+  return db.select().from(engagementTemplates).where(condition).orderBy(desc(engagementTemplates.createdAt));
+}
+
+export async function createEngagementTemplate(data: InsertEngagementTemplate): Promise<EngagementTemplate> {
+  const [created] = await db.insert(engagementTemplates).values(data as any).returning();
+  return created;
+}
+
+export async function updateEngagementTemplate(id: number, data: Partial<InsertEngagementTemplate>): Promise<EngagementTemplate | undefined> {
+  const [updated] = await db.update(engagementTemplates).set({ ...data, updatedAt: new Date() } as any).where(eq(engagementTemplates.id, id)).returning();
+  return updated;
+}
+
+export async function deleteEngagementTemplate(id: number): Promise<void> {
+  await db.delete(engagementTemplates).where(eq(engagementTemplates.id, id));
+}
+
+// ─── Phase 11: Email Subscribers ─────────────────────────────────────────────
+
+export async function getEmailSubscribers(filters?: { isActive?: boolean; source?: string }): Promise<EmailSubscriber[]> {
+  const conditions: SQL[] = [];
+  if (filters?.isActive !== undefined) conditions.push(eq(emailSubscribers.isActive, filters.isActive));
+  if (filters?.source) conditions.push(eq(emailSubscribers.source, filters.source));
+  return db.select().from(emailSubscribers)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(emailSubscribers.createdAt));
+}
+
+export async function getEmailSubscriberCount(): Promise<number> {
+  const [result] = await db.select({ total: count() }).from(emailSubscribers).where(eq(emailSubscribers.isActive, true));
+  return result?.total ?? 0;
+}
+
+export async function createEmailSubscriber(data: InsertEmailSubscriber): Promise<EmailSubscriber> {
+  const [created] = await db.insert(emailSubscribers).values(data as any).returning();
+  return created;
+}
+
+export async function unsubscribeEmail(id: number): Promise<void> {
+  await db.update(emailSubscribers).set({ isActive: false, unsubscribedAt: new Date() } as any).where(eq(emailSubscribers.id, id));
+}
+
+export async function deleteEmailSubscriber(id: number): Promise<void> {
+  await db.delete(emailSubscribers).where(eq(emailSubscribers.id, id));
+}
+
+// ─── Phase 11: Email Campaigns ───────────────────────────────────────────────
+
+export async function getEmailCampaigns(): Promise<EmailCampaign[]> {
+  return db.select().from(emailCampaigns).orderBy(desc(emailCampaigns.createdAt));
+}
+
+export async function getEmailCampaignById(id: number): Promise<EmailCampaign | undefined> {
+  const [result] = await db.select().from(emailCampaigns).where(eq(emailCampaigns.id, id)).limit(1);
+  return result;
+}
+
+export async function createEmailCampaign(data: InsertEmailCampaign): Promise<EmailCampaign> {
+  const [created] = await db.insert(emailCampaigns).values(data as any).returning();
+  return created;
+}
+
+export async function updateEmailCampaign(id: number, data: Partial<InsertEmailCampaign>): Promise<EmailCampaign | undefined> {
+  const [updated] = await db.update(emailCampaigns).set({ ...data, updatedAt: new Date() } as any).where(eq(emailCampaigns.id, id)).returning();
+  return updated;
+}
+
+export async function deleteEmailCampaign(id: number): Promise<void> {
+  await db.delete(emailCampaigns).where(eq(emailCampaigns.id, id));
+}
+
+// ─── Phase 11: Competitor Tracking ───────────────────────────────────────────
+
+export async function getCompetitorTracks(): Promise<CompetitorTrack[]> {
+  return db.select().from(competitorTracks).orderBy(asc(competitorTracks.name));
+}
+
+export async function createCompetitorTrack(data: InsertCompetitorTrack): Promise<CompetitorTrack> {
+  const [created] = await db.insert(competitorTracks).values(data as any).returning();
+  return created;
+}
+
+export async function updateCompetitorTrack(id: number, data: Partial<InsertCompetitorTrack>): Promise<CompetitorTrack | undefined> {
+  const [updated] = await db.update(competitorTracks).set({ ...data, updatedAt: new Date() } as any).where(eq(competitorTracks.id, id)).returning();
+  return updated;
+}
+
+export async function deleteCompetitorTrack(id: number): Promise<void> {
+  await db.delete(competitorTracks).where(eq(competitorTracks.id, id));
+}
+
+// ─── Phase 11: Release Window Strategies ─────────────────────────────────────
+
+export async function getReleaseWindowStrategies(titleId?: number): Promise<ReleaseWindowStrategy[]> {
+  const condition = titleId ? eq(releaseWindowStrategies.titleId, titleId) : undefined;
+  return db.select().from(releaseWindowStrategies).where(condition).orderBy(desc(releaseWindowStrategies.startDate));
+}
+
+export async function createReleaseWindowStrategy(data: InsertReleaseWindowStrategy): Promise<ReleaseWindowStrategy> {
+  const [created] = await db.insert(releaseWindowStrategies).values(data as any).returning();
+  return created;
+}
+
+export async function updateReleaseWindowStrategy(id: number, data: Partial<InsertReleaseWindowStrategy>): Promise<ReleaseWindowStrategy | undefined> {
+  const [updated] = await db.update(releaseWindowStrategies).set({ ...data, updatedAt: new Date() } as any).where(eq(releaseWindowStrategies.id, id)).returning();
+  return updated;
+}
+
+export async function deleteReleaseWindowStrategy(id: number): Promise<void> {
+  await db.delete(releaseWindowStrategies).where(eq(releaseWindowStrategies.id, id));
+}
+
+// ─── Phase 11: Cross-Promotions ──────────────────────────────────────────────
+
+export async function getCrossPromotions(status?: string): Promise<CrossPromotion[]> {
+  const condition = status ? eq(crossPromotions.status, status) : undefined;
+  return db.select().from(crossPromotions).where(condition).orderBy(desc(crossPromotions.createdAt));
+}
+
+export async function createCrossPromotion(data: InsertCrossPromotion): Promise<CrossPromotion> {
+  const [created] = await db.insert(crossPromotions).values(data as any).returning();
+  return created;
+}
+
+export async function updateCrossPromotionStatus(id: number, status: string): Promise<CrossPromotion | undefined> {
+  const [updated] = await db.update(crossPromotions).set({ status }).where(eq(crossPromotions.id, id)).returning();
+  return updated;
+}
+
+export async function deleteCrossPromotion(id: number): Promise<void> {
+  await db.delete(crossPromotions).where(eq(crossPromotions.id, id));
 }
