@@ -39,25 +39,41 @@ OAE is a lean independent genre film company with no dedicated marketing departm
 
 ---
 
-## Primary Users
+## Team
 
-1. **Marketing Operator** (Geoff or team) — creates campaigns, generates AI copy, manages clips, exports posts
-2. **Executive / Producer** — read-only view of what's being pushed, which titles need attention, analytics
-3. **External Freelancer** — limited access to assigned projects, can upload clips and draft posts
-4. **Reviewer / Approver** — approves clips, campaigns, captions; can reject or request edits
+### AI Department Head
+**Morgan** — AI Head of Marketing (see `.planning/SCOUT_SPEC.md`)
+- Operates autonomously on daily cycle (morning scan → draft → brief → publish → digest)
+- Drafts content, recommends strategy, monitors performance, alerts on issues
+- All output goes through approval queue unless auto-approve rules match
+- Learns from OAE's specific audience data over time
+- OAE projects only — no side projects, no external clients
+
+### Human Team (Co-Owners)
+| Name | Role | Access |
+|------|------|--------|
+| Ryan | Co-owner / Admin | Full access — approves campaigns, sets strategy |
+| Jon | Co-owner / Admin | Full access — creative direction, content review |
+| Geoff | Co-owner / Admin / Technical | Full access — app settings, platform connections, tech |
+
+### Additional Roles (future)
+- **External Freelancer** — limited access to assigned projects, can upload clips and draft posts
+- **Reviewer / Approver** — approves clips, campaigns, captions; can reject or request edits
 
 ---
 
-## App Modules (8)
+## App Modules (10)
 
-1. **Dashboard** — campaigns in flight, titles needing attention, unposted clips, expiring deals, AI recommendations
-2. **Titles** — film catalog with OMDb auto-import, full metadata, assets, campaigns per title
-3. **Assets / Clip Library** — Dropbox-synced clips with metadata, approval status, posting history, rotation status
-4. **Destinations** — regional watch-link manager, smart link generator, territory routing rules
-5. **Campaign Builder** — title → goal → regions → clip select → AI copy → smart links → export/publish
-6. **AI Studio** — prompted workflows using Claude/OpenAI/DeepSeek marketing skills
-7. **Analytics** — clip performance, campaign metrics, regional data, platform data
-8. **Settings** — users, AI provider config, Dropbox connection, app settings
+1. **Dashboard** — Morgan's command center: today's queue, approvals needed, performance snapshot, proactive alerts
+2. **Morgan Chat** — conversational interface: "What should I post?", "Plan a campaign for [film]", "Why is engagement down?"
+3. **Titles** — film catalog with OMDb auto-import, full metadata, assets, campaigns per title
+4. **Assets / Clip Library** — Dropbox-synced clips with metadata, approval status, posting history, rotation status
+5. **Destinations** — regional watch-link manager, smart link generator, territory routing rules
+6. **Campaign Builder** — title → goal → regions → clip select → Morgan generates copy → smart links → schedule/publish
+7. **Content Calendar** — month/week/day view of scheduled + published + drafted posts across all platforms
+8. **Analytics** — clip performance, campaign metrics, regional data, platform data, Morgan's weekly strategy review
+9. **Brand Hub** — logos, colors, voice guide, press kits, social profile links
+10. **Settings** — users, AI provider config, Dropbox connection, platform OAuth, Morgan preferences, auto-approve rules
 
 ---
 

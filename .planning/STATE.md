@@ -1,33 +1,39 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: — MVP
-current_phase: Phase 5 (Phase 4 complete)
-status: unknown
-last_updated: "2026-03-09T20:15:13.057Z"
+milestone: v1.5
+milestone_name: — Morgan AI Marketing Department
+current_phase: Phase 7 (Phase 6 complete)
+status: building
+last_updated: "2026-03-13"
 progress:
-  total_phases: 5
-  completed_phases: 3
+  total_phases: 11
+  completed_phases: 6
   total_plans: 21
-  completed_plans: 18
+  completed_plans: 21
 ---
 
 # OAE_Marketing — Project State
 
-**Last Updated:** 2026-03-09
-**Current Milestone:** v1.0
-**Current Phase:** Phase 5 (Phase 4 complete)
-**Last Session:** 2026-03-09T20:15:13.054Z
+**Last Updated:** 2026-03-13
+**Current Milestone:** v1.5 — Morgan: AI Marketing Department
+**Current Phase:** Phase 7 — Social Publishing + Scheduling
+**Last Session:** 2026-03-13
 
 ---
 
 ## Status
 
-**Phase 1:** Complete
-**Phase 2:** Complete — Plans 01 (Destinations), 02 (Smart Links), 03 (Alerts + Dashboard) all done
-**Phase 3:** Not started
-**Phase 4:** Complete
-**Phase 5:** In Progress — Plans 01 (Analytics Storage), 02 (Notifications Schema + Storage), and 03 (Analytics API Routes) complete
+**Phase 1:** Complete — Foundation, auth, titles, Dropbox sync, clip library
+**Phase 2:** Complete — Destinations, smart links, alerts
+**Phase 3:** Complete — Clip rotation engine (storage + routes + UI all present; was mislabeled as skipped)
+**Phase 4:** Complete — Campaign builder, AI studio, prompt templates, content versioning
+**Phase 5:** Complete — Analytics storage, notifications, dashboard, security hardening
+**Phase 6:** Complete — Health check passed, 3 owner accounts seeded (ryan/jon/geoff), schema pushed, all pages verified via Playwright
+**Phase 7:** Not started — Social publishing + scheduling (Instagram, TikTok, X, YouTube)
+**Phase 8:** Not started — Morgan Core: AI marketing brain, chat interface, strategy wizard
+**Phase 9:** Not started — Morgan Autonomous Mode: daily cycle, approval queue, trend monitoring
+**Phase 10:** Not started — Smart link deployment (watch.otheranimal.app) + brand hub
+**Phase 11:** Not started — Audience growth, engagement, cross-promotion, email/newsletter
 
 ---
 
@@ -46,7 +52,15 @@ progress:
 
 ## What's Next
 
-Phase 5 Plans 01 and 02 complete. Run `/gsd:execute-phase 5` (plan 03) to continue.
+v1.0 phases largely complete but Phase 3 (Clip Rotation) was skipped and needs building.
+New Milestone 1.5 added (Phases 6–9):
+
+1. **Phase 6** — Health check all existing code + build Phase 3 (clip rotation engine)
+2. **Phase 7** — Social platform publishing + scheduling (Instagram, TikTok, X, YouTube APIs)
+3. **Phase 8** — 360 Marketing Playbook: AI strategy wizard, "what should I post today?", content calendar auto-gen, posting cadence templates, genre-aware platform recs, weekly strategy digest
+4. **Phase 9** — Deploy watch.otheranimal.app smart link service + brand asset hub
+
+**Start:** Open session in `/Users/geoffraffan/Projects/OAE_Marketing` → `/gsd:plan-phase 6`
 
 ---
 

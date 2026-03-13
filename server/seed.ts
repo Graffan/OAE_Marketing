@@ -10,6 +10,13 @@ import { eq } from "drizzle-orm";
 const DEFAULT_USERNAME = "admin";
 const DEFAULT_PASSWORD = "oaeadmin2024";
 
+// Owner accounts — Ryan, Jon, Geoff
+const OWNER_ACCOUNTS = [
+  { username: "ryan", email: "ryan@otheranimal.app", firstName: "Ryan", lastName: "" },
+  { username: "jon", email: "jon@otheranimal.app", firstName: "Jon", lastName: "" },
+  { username: "geoff", email: "geoff@otheranimal.app", firstName: "Geoff", lastName: "Raffan" },
+] as const;
+
 const DEFAULT_PROMPT_TEMPLATES = [
   {
     taskName: "campaign_brief",
@@ -118,6 +125,36 @@ async function seed() {
     console.log(`Admin user created: ${user.username} (id: ${user.id})`);
     console.log(`Login: ${DEFAULT_USERNAME} / ${DEFAULT_PASSWORD}`);
     console.log("Change the password after first login!");
+  }
+
+  // Owner accounts
+  const ownerPassword = await bcrypt.hash("oaeowner2024", 12);
+  for (const owner of OWNER_ACCOUNTS) {
+    const [existingOwner] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, owner.username))
+      .limit(1);
+
+    if (existingOwner) {
+      if (existingOwner.role !== "admin") {
+        await db.update(users).set({ role: "admin" }).where(eq(users.id, existingOwner.id));
+        console.log(`Updated ${owner.username} role to admin.`);
+      } else {
+        console.log(`Owner ${owner.username} already exists — skipping.`);
+      }
+    } else {
+      await db.insert(users).values({
+        username: owner.username,
+        email: owner.email,
+        password: ownerPassword,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        role: "admin",
+        isActive: true,
+      });
+      console.log(`Owner account created: ${owner.username} (password: oaeowner2024)`);
+    }
   }
 
   // App settings singleton
