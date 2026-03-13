@@ -641,6 +641,127 @@ export const insertCampaignSchema = createInsertSchema(campaigns).pick({
 
 export type InsertCampaign = z.infer<typeof insertCampaignSchema>;
 
+// ─── social_connections ──────────────────────────────────────────────────────
+
+export const SOCIAL_PLATFORMS = [
+  "instagram",
+  "tiktok",
+  "twitter",
+  "youtube",
+] as const;
+export type SocialPlatform = (typeof SOCIAL_PLATFORMS)[number];
+
+export const socialConnections = pgTable("social_connections", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull(),
+  accountName: text("account_name").notNull(),
+  accountId: text("account_id"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  scopes: json("scopes").$type<string[]>(),
+  profileUrl: text("profile_url"),
+  profileImageUrl: text("profile_image_url"),
+  isActive: boolean("is_active").notNull().default(true),
+  connectedById: integer("connected_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSocialConnectionSchema = createInsertSchema(socialConnections).pick({
+  platform: true,
+  accountName: true,
+  accountId: true,
+  accessToken: true,
+  refreshToken: true,
+  tokenExpiresAt: true,
+  scopes: true,
+  profileUrl: true,
+  profileImageUrl: true,
+  isActive: true,
+  connectedById: true,
+}).extend({
+  scopes: z.array(z.string()).nullable().optional(),
+  tokenExpiresAt: z.string().nullable().optional(),
+});
+
+export type SocialConnection = typeof socialConnections.$inferSelect;
+export type InsertSocialConnection = z.infer<typeof insertSocialConnectionSchema>;
+
+// ─── scheduled_posts ─────────────────────────────────────────────────────────
+
+export const SCHEDULED_POST_STATUSES = [
+  "draft",
+  "queued",
+  "scheduled",
+  "publishing",
+  "published",
+  "failed",
+  "cancelled",
+] as const;
+export type ScheduledPostStatus = (typeof SCHEDULED_POST_STATUSES)[number];
+
+export const scheduledPosts = pgTable(
+  "scheduled_posts",
+  {
+    id: serial("id").primaryKey(),
+    campaignId: integer("campaign_id").references(() => campaigns.id, { onDelete: "set null" }),
+    clipId: integer("clip_id").references(() => clips.id, { onDelete: "set null" }),
+    socialConnectionId: integer("social_connection_id").references(() => socialConnections.id, { onDelete: "set null" }),
+    platform: text("platform").notNull(),
+    status: text("status").notNull().default("draft"),
+    scheduledAt: timestamp("scheduled_at"),
+    publishedAt: timestamp("published_at"),
+    caption: text("caption"),
+    hashtags: json("hashtags").$type<string[]>(),
+    cta: text("cta"),
+    smartLinkId: integer("smart_link_id").references(() => smartLinks.id, { onDelete: "set null" }),
+    mediaUrl: text("media_url"),
+    platformPostId: text("platform_post_id"),
+    platformPostUrl: text("platform_post_url"),
+    errorMessage: text("error_message"),
+    retryCount: integer("retry_count").notNull().default(0),
+    createdByType: text("created_by_type").notNull().default("human"),
+    createdById: integer("created_by_id").references(() => users.id, { onDelete: "set null" }),
+    approvedById: integer("approved_by_id").references(() => users.id, { onDelete: "set null" }),
+    approvedAt: timestamp("approved_at"),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    scheduledAtIdx: index("scheduled_posts_scheduled_at_idx").on(table.scheduledAt),
+    statusIdx: index("scheduled_posts_status_idx").on(table.status),
+    platformIdx: index("scheduled_posts_platform_idx").on(table.platform),
+    campaignIdIdx: index("scheduled_posts_campaign_id_idx").on(table.campaignId),
+  })
+);
+
+export const insertScheduledPostSchema = createInsertSchema(scheduledPosts).pick({
+  campaignId: true,
+  clipId: true,
+  socialConnectionId: true,
+  platform: true,
+  status: true,
+  scheduledAt: true,
+  caption: true,
+  hashtags: true,
+  cta: true,
+  smartLinkId: true,
+  mediaUrl: true,
+  createdByType: true,
+  createdById: true,
+}).extend({
+  campaignId: z.number().nullable().optional(),
+  clipId: z.number().nullable().optional(),
+  socialConnectionId: z.number().nullable().optional(),
+  smartLinkId: z.number().nullable().optional(),
+  scheduledAt: z.string().nullable().optional(),
+  hashtags: z.array(z.string()).nullable().optional(),
+});
+
+export type ScheduledPost = typeof scheduledPosts.$inferSelect;
+export type InsertScheduledPost = z.infer<typeof insertScheduledPostSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

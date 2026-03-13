@@ -29,6 +29,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAiUsage, useAiLogs, usePromptTemplates, useUpdatePromptTemplate } from "@/hooks/useAiStudio";
 import { useSettings } from "@/hooks/useSettings";
 import TokenUsageBar from "@/components/ai/TokenUsageBar";
+import {
+  useSocialConnections,
+  useCreateSocialConnection,
+  useUpdateSocialConnection,
+  useDeleteSocialConnection,
+} from "@/hooks/useSocialConnections";
+import { Instagram, Twitter, Youtube, Music2, Trash2, ToggleLeft, ToggleRight, Globe2 } from "lucide-react";
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 
@@ -82,6 +89,12 @@ export default function AdminPage() {
           >
             Email
           </TabsTrigger>
+          <TabsTrigger
+            value="social"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent py-3 px-4"
+          >
+            Social Connections
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="flex-1 overflow-auto p-8">
           <UsersTab />
@@ -100,6 +113,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="email" className="flex-1 overflow-auto p-8">
           <EmailSettingsTab />
+        </TabsContent>
+        <TabsContent value="social" className="flex-1 overflow-auto p-8">
+          <SocialConnectionsTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -1495,6 +1511,228 @@ function EmailSettingsTab() {
           <span className="text-sm text-destructive">{(saveMutation.error as Error).message}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Social Connections Tab ─────────────────────────────────────────────────
+
+const SOCIAL_PLATFORM_META: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  instagram: { label: "Instagram", icon: Instagram, color: "text-pink-500" },
+  tiktok: { label: "TikTok", icon: Music2, color: "text-cyan-500" },
+  twitter: { label: "X / Twitter", icon: Twitter, color: "text-sky-500" },
+  youtube: { label: "YouTube", icon: Youtube, color: "text-red-500" },
+};
+
+function SocialConnectionsTab() {
+  const { data: connections = [], isLoading } = useSocialConnections();
+  const createConnection = useCreateSocialConnection();
+  const updateConnection = useUpdateSocialConnection();
+  const deleteConnection = useDeleteSocialConnection();
+  const [addOpen, setAddOpen] = useState(false);
+  const [addForm, setAddForm] = useState({
+    platform: "instagram",
+    accountName: "",
+    accountId: "",
+    accessToken: "",
+    refreshToken: "",
+    profileUrl: "",
+  });
+
+  function handleAdd() {
+    createConnection.mutate(
+      {
+        platform: addForm.platform,
+        accountName: addForm.accountName,
+        accountId: addForm.accountId || null,
+        accessToken: addForm.accessToken || null,
+        refreshToken: addForm.refreshToken || null,
+        profileUrl: addForm.profileUrl || null,
+        isActive: true,
+      },
+      {
+        onSuccess: () => {
+          setAddOpen(false);
+          setAddForm({ platform: "instagram", accountName: "", accountId: "", accessToken: "", refreshToken: "", profileUrl: "" });
+        },
+      }
+    );
+  }
+
+  function toggleActive(conn: any) {
+    updateConnection.mutate({ id: conn.id, isActive: !conn.isActive });
+  }
+
+  const allConnections = connections as any[];
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Social Connections</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Connect your social media accounts for publishing
+          </p>
+        </div>
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Account
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      ) : allConnections.length === 0 ? (
+        <div className="text-center py-12 border border-dashed border-border/50 rounded-xl">
+          <Globe2 className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">No social accounts connected</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            Add your Instagram, TikTok, X, or YouTube accounts to start publishing
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {allConnections.map((conn: any) => {
+            const meta = SOCIAL_PLATFORM_META[conn.platform];
+            const Icon = meta?.icon ?? Globe2;
+            return (
+              <div
+                key={conn.id}
+                className="flex items-center gap-4 p-4 rounded-xl border border-border/50 bg-card"
+              >
+                <Icon className={`h-5 w-5 flex-shrink-0 ${meta?.color ?? "text-muted-foreground"}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{conn.accountName}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {meta?.label ?? conn.platform}
+                    </Badge>
+                    {!conn.isActive && (
+                      <Badge className="text-[10px] bg-muted text-muted-foreground">
+                        Disabled
+                      </Badge>
+                    )}
+                  </div>
+                  {conn.profileUrl && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">{conn.profileUrl}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0"
+                    onClick={() => toggleActive(conn)}
+                    title={conn.isActive ? "Disable" : "Enable"}
+                  >
+                    {conn.isActive ? (
+                      <ToggleRight className="h-4 w-4 text-emerald-500" />
+                    ) : (
+                      <ToggleLeft className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 p-0 text-red-500 hover:text-red-600"
+                    onClick={() => deleteConnection.mutate(conn.id)}
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add Connection Dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>Add Social Connection</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label>Platform</Label>
+              <Select
+                value={addForm.platform}
+                onValueChange={(v) => setAddForm({ ...addForm, platform: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(SOCIAL_PLATFORM_META).map(([key, m]) => (
+                    <SelectItem key={key} value={key}>
+                      <span className="flex items-center gap-2">
+                        <m.icon className={`h-3.5 w-3.5 ${m.color}`} />
+                        {m.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Account Name</Label>
+              <Input
+                value={addForm.accountName}
+                onChange={(e) => setAddForm({ ...addForm, accountName: e.target.value })}
+                placeholder="@otheranimal"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Account ID <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                value={addForm.accountId}
+                onChange={(e) => setAddForm({ ...addForm, accountId: e.target.value })}
+                placeholder="Platform-specific account ID"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Access Token <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                type="password"
+                value={addForm.accessToken}
+                onChange={(e) => setAddForm({ ...addForm, accessToken: e.target.value })}
+                placeholder="OAuth access token"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Refresh Token <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                type="password"
+                value={addForm.refreshToken}
+                onChange={(e) => setAddForm({ ...addForm, refreshToken: e.target.value })}
+                placeholder="OAuth refresh token"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Profile URL <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                value={addForm.profileUrl}
+                onChange={(e) => setAddForm({ ...addForm, profileUrl: e.target.value })}
+                placeholder="https://instagram.com/otheranimal"
+              />
+            </div>
+          </div>
+          <DialogFooter className="pt-4">
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAdd}
+              disabled={!addForm.accountName.trim() || createConnection.isPending}
+            >
+              {createConnection.isPending ? "Adding..." : "Add Connection"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

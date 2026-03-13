@@ -88,12 +88,28 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   markClipUnavailable,
+  getSocialConnections,
+  getSocialConnectionById,
+  getActiveSocialConnections,
+  createSocialConnection,
+  updateSocialConnection,
+  deleteSocialConnection,
+  getScheduledPosts,
+  getScheduledPostById,
+  createScheduledPost,
+  updateScheduledPost,
+  deleteScheduledPost,
+  approveScheduledPost,
+  getPostsDueForPublishing,
+  markPostPublished,
+  markPostFailed,
+  getCalendarPosts,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
 import { resolveCountryCode } from "./services/geoip.js";
 import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
-import { insertCampaignSchema, insertCampaignContentSchema } from "@shared/schema.js";
+import { insertCampaignSchema, insertCampaignContentSchema, insertSocialConnectionSchema, insertScheduledPostSchema } from "@shared/schema.js";
 
 function applyTrackingParams(baseUrl: string, template: string, slug: string): string {
   if (!template) return baseUrl;
@@ -1688,6 +1704,175 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
         message: `Source file ${dropboxFileId} has been marked unavailable.`,
         userId,
       }).catch(console.error);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Social Connections ────────────────────────────────────────────────────
+
+  app.get("/api/social-connections", requireAuth, async (_req, res) => {
+    try {
+      const connections = await getSocialConnections();
+      // Strip tokens from response for non-admin users
+      const role = (_req.user as any)?.role;
+      const safe = role === "admin"
+        ? connections
+        : connections.map(({ accessToken, refreshToken, ...rest }) => rest);
+      res.json(safe);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/social-connections/active", requireAuth, async (_req, res) => {
+    try {
+      const connections = await getActiveSocialConnections();
+      res.json(connections.map(({ accessToken, refreshToken, ...rest }) => rest));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/social-connections/:id", requireAuth, async (req, res) => {
+    try {
+      const connection = await getSocialConnectionById(Number(req.params.id));
+      if (!connection) return res.status(404).json({ message: "Connection not found" });
+      const { accessToken, refreshToken, ...safe } = connection;
+      res.json(safe);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/social-connections", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const parsed = insertSocialConnectionSchema.parse(req.body);
+      const connection = await createSocialConnection({ ...parsed, connectedById: (req.user as any).id });
+      res.status(201).json(connection);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/social-connections/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const updated = await updateSocialConnection(Number(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "Connection not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/social-connections/:id", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const deleted = await deleteSocialConnection(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Connection not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Scheduled Posts ──────────────────────────────────────────────────────
+
+  app.get("/api/scheduled-posts", requireAuth, async (req, res) => {
+    try {
+      const filters: Record<string, any> = {};
+      if (req.query.status) filters.status = req.query.status;
+      if (req.query.platform) filters.platform = req.query.platform;
+      if (req.query.campaignId) filters.campaignId = Number(req.query.campaignId);
+      if (req.query.from) filters.from = new Date(req.query.from as string);
+      if (req.query.to) filters.to = new Date(req.query.to as string);
+      const posts = await getScheduledPosts(filters);
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/scheduled-posts/calendar", requireAuth, async (req, res) => {
+    try {
+      const from = req.query.from ? new Date(req.query.from as string) : new Date();
+      const to = req.query.to
+        ? new Date(req.query.to as string)
+        : new Date(from.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const posts = await getCalendarPosts(from, to);
+      res.json(posts);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/scheduled-posts/:id", requireAuth, async (req, res) => {
+    try {
+      const post = await getScheduledPostById(Number(req.params.id));
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      res.json(post);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scheduled-posts", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const parsed = insertScheduledPostSchema.parse(req.body);
+      const post = await createScheduledPost({ ...parsed, createdById: (req.user as any).id });
+      res.status(201).json(post);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/scheduled-posts/:id", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const updated = await updateScheduledPost(Number(req.params.id), req.body);
+      if (!updated) return res.status(404).json({ message: "Post not found" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scheduled-posts/:id/approve", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id as number;
+      const approved = await approveScheduledPost(Number(req.params.id), userId);
+      if (!approved) return res.status(404).json({ message: "Post not found" });
+      res.json(approved);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scheduled-posts/:id/cancel", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const cancelled = await updateScheduledPost(Number(req.params.id), { status: "cancelled" });
+      if (!cancelled) return res.status(404).json({ message: "Post not found" });
+      res.json(cancelled);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/scheduled-posts/:id/retry", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const post = await getScheduledPostById(Number(req.params.id));
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      if (post.status !== "failed") return res.status(400).json({ message: "Only failed posts can be retried" });
+      const updated = await updateScheduledPost(post.id, { status: "scheduled" });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/scheduled-posts/:id", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const deleted = await deleteScheduledPost(Number(req.params.id));
+      if (!deleted) return res.status(404).json({ message: "Post not found" });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });

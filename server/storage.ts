@@ -1,7 +1,8 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType } from "@shared/schema.js";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost } from "@shared/schema.js";
+import type { SQL } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
@@ -1380,4 +1381,153 @@ export async function markAllNotificationsRead(userId?: number): Promise<void> {
     .update(notifications)
     .set({ isRead: true })
     .where(and(...conditions));
+}
+
+// ─── Social Connections ──────────────────────────────────────────────────────
+
+export async function getSocialConnections(): Promise<SocialConnection[]> {
+  return db.select().from(socialConnections).orderBy(socialConnections.platform);
+}
+
+export async function getSocialConnectionById(id: number): Promise<SocialConnection | undefined> {
+  const [row] = await db.select().from(socialConnections).where(eq(socialConnections.id, id)).limit(1);
+  return row;
+}
+
+export async function getActiveSocialConnections(): Promise<SocialConnection[]> {
+  return db.select().from(socialConnections).where(eq(socialConnections.isActive, true)).orderBy(socialConnections.platform);
+}
+
+export async function createSocialConnection(data: InsertSocialConnection): Promise<SocialConnection> {
+  const [created] = await db.insert(socialConnections).values(data).returning();
+  return created;
+}
+
+export async function updateSocialConnection(id: number, data: Partial<InsertSocialConnection>): Promise<SocialConnection | undefined> {
+  const [updated] = await db
+    .update(socialConnections)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(socialConnections.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteSocialConnection(id: number): Promise<boolean> {
+  const result = await db.delete(socialConnections).where(eq(socialConnections.id, id)).returning({ id: socialConnections.id });
+  return result.length > 0;
+}
+
+// ─── Scheduled Posts ─────────────────────────────────────────────────────────
+
+export async function getScheduledPosts(filters?: {
+  status?: string;
+  platform?: string;
+  campaignId?: number;
+  from?: Date;
+  to?: Date;
+}): Promise<ScheduledPost[]> {
+  const conditions: SQL[] = [];
+  if (filters?.status) conditions.push(eq(scheduledPosts.status, filters.status));
+  if (filters?.platform) conditions.push(eq(scheduledPosts.platform, filters.platform));
+  if (filters?.campaignId) conditions.push(eq(scheduledPosts.campaignId, filters.campaignId));
+  if (filters?.from) conditions.push(sql`${scheduledPosts.scheduledAt} >= ${filters.from.toISOString()}`);
+  if (filters?.to) conditions.push(sql`${scheduledPosts.scheduledAt} <= ${filters.to.toISOString()}`);
+
+  const query = conditions.length > 0
+    ? db.select().from(scheduledPosts).where(and(...conditions))
+    : db.select().from(scheduledPosts);
+
+  return query.orderBy(scheduledPosts.scheduledAt);
+}
+
+export async function getScheduledPostById(id: number): Promise<ScheduledPost | undefined> {
+  const [row] = await db.select().from(scheduledPosts).where(eq(scheduledPosts.id, id)).limit(1);
+  return row;
+}
+
+export async function createScheduledPost(data: InsertScheduledPost): Promise<ScheduledPost> {
+  const [created] = await db.insert(scheduledPosts).values(data).returning();
+  return created;
+}
+
+export async function updateScheduledPost(id: number, data: Partial<InsertScheduledPost & { status: string; publishedAt: string; platformPostId: string; platformPostUrl: string; errorMessage: string }>): Promise<ScheduledPost | undefined> {
+  const [updated] = await db
+    .update(scheduledPosts)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(scheduledPosts.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteScheduledPost(id: number): Promise<boolean> {
+  const result = await db.delete(scheduledPosts).where(eq(scheduledPosts.id, id)).returning({ id: scheduledPosts.id });
+  return result.length > 0;
+}
+
+export async function approveScheduledPost(id: number, userId: number): Promise<ScheduledPost | undefined> {
+  const [updated] = await db
+    .update(scheduledPosts)
+    .set({ status: "scheduled", approvedById: userId, approvedAt: new Date(), updatedAt: new Date() })
+    .where(eq(scheduledPosts.id, id))
+    .returning();
+  return updated;
+}
+
+export async function getPostsDueForPublishing(): Promise<ScheduledPost[]> {
+  const now = new Date();
+  return db
+    .select()
+    .from(scheduledPosts)
+    .where(
+      and(
+        eq(scheduledPosts.status, "scheduled"),
+        sql`${scheduledPosts.scheduledAt} <= ${now.toISOString()}`
+      )
+    )
+    .orderBy(scheduledPosts.scheduledAt);
+}
+
+export async function markPostPublished(id: number, platformPostId: string, platformPostUrl: string): Promise<ScheduledPost | undefined> {
+  const [updated] = await db
+    .update(scheduledPosts)
+    .set({
+      status: "published",
+      publishedAt: new Date(),
+      platformPostId,
+      platformPostUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(scheduledPosts.id, id))
+    .returning();
+  return updated;
+}
+
+export async function markPostFailed(id: number, errorMessage: string): Promise<ScheduledPost | undefined> {
+  const post = await getScheduledPostById(id);
+  const retryCount = (post?.retryCount ?? 0) + 1;
+  const [updated] = await db
+    .update(scheduledPosts)
+    .set({
+      status: "failed",
+      errorMessage,
+      retryCount,
+      updatedAt: new Date(),
+    })
+    .where(eq(scheduledPosts.id, id))
+    .returning();
+  return updated;
+}
+
+export async function getCalendarPosts(from: Date, to: Date): Promise<ScheduledPost[]> {
+  return db
+    .select()
+    .from(scheduledPosts)
+    .where(
+      and(
+        sql`${scheduledPosts.scheduledAt} >= ${from.toISOString()}`,
+        sql`${scheduledPosts.scheduledAt} <= ${to.toISOString()}`,
+        sql`${scheduledPosts.status} != 'cancelled'`
+      )
+    )
+    .orderBy(scheduledPosts.scheduledAt);
 }

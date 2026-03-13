@@ -17,6 +17,8 @@ import CampaignsPage from "@/pages/CampaignsPage";
 import CampaignDetailPage from "@/pages/CampaignDetailPage";
 import AiStudioPage from "@/pages/AiStudioPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
+import SchedulePage from "@/pages/SchedulePage";
+import CalendarPage from "@/pages/CalendarPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -27,6 +29,8 @@ import {
   Link2,
   Sparkles,
   BarChart3,
+  CalendarDays,
+  Send,
   Settings,
   LogOut,
   Sun,
@@ -78,6 +82,8 @@ function Sidebar() {
     { href: "/destinations", label: "Destinations", icon: Globe,           roles: OPERATOR_AND_ABOVE },
     { href: "/smart-links",  label: "Smart Links",  icon: Link2,           roles: OPERATOR_AND_ABOVE },
     { href: "/ai-studio",    label: "AI Studio",    icon: Sparkles,        roles: OPERATOR_AND_ABOVE },
+    { href: "/schedule",     label: "Schedule",     icon: Send,            roles: OPERATOR_AND_ABOVE },
+    { href: "/calendar",     label: "Calendar",     icon: CalendarDays,    roles: null },
     { href: "/analytics",    label: "Analytics",    icon: BarChart3,       roles: null },
     { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
   ].filter(({ roles }) => !roles || roles.includes(role));
@@ -213,6 +219,8 @@ export default function App() {
             <Route path="/destinations" component={DestinationsPage} />
             <Route path="/smart-links"  component={SmartLinksPage} />
             <Route path="/ai-studio"    component={AiStudioPage} />
+            <Route path="/schedule"     component={SchedulePage} />
+            <Route path="/calendar"     component={CalendarPage} />
             <Route path="/analytics"    component={AnalyticsPage} />
             <Route path="/admin"        component={AdminPage} />
             <Route>
