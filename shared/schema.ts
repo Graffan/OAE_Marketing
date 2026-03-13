@@ -929,6 +929,139 @@ export type InsertMorganTask = z.infer<typeof insertMorganTaskSchema>;
 export type MorganAutoApproveRule = typeof morganAutoApproveRules.$inferSelect;
 export type InsertMorganAutoApproveRule = z.infer<typeof insertMorganAutoApproveRuleSchema>;
 
+// ─── Phase 10: Click Events (Smart Link Tracking) ────────────────────────────
+
+export const clickEvents = pgTable("click_events", {
+  id: serial("id").primaryKey(),
+  smartLinkId: integer("smart_link_id").references(() => smartLinks.id, { onDelete: "cascade" }).notNull(),
+  slug: text("slug").notNull(),
+  ip: text("ip"),
+  country: text("country"),
+  region: text("region"),
+  city: text("city"),
+  userAgent: text("user_agent"),
+  referer: text("referer"),
+  platform: text("platform"), // detected: mobile, desktop, tablet
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  utmContent: text("utm_content"),
+  destinationUrl: text("destination_url").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  smartLinkIdx: index("click_event_smart_link_idx").on(table.smartLinkId),
+  slugIdx: index("click_event_slug_idx").on(table.slug),
+  countryIdx: index("click_event_country_idx").on(table.country),
+  createdIdx: index("click_event_created_idx").on(table.createdAt),
+}));
+
+// ─── Phase 10: Brand Assets ──────────────────────────────────────────────────
+
+export const BRAND_ASSET_TYPES = [
+  "logo", "logo_dark", "icon", "wordmark",
+  "color_palette", "font", "press_photo",
+  "social_banner", "email_header", "other",
+] as const;
+export type BrandAssetType = (typeof BRAND_ASSET_TYPES)[number];
+
+export const brandAssets = pgTable("brand_assets", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  type: text("type").notNull(), // BrandAssetType
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "set null" }), // null = company-level
+  fileUrl: text("file_url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  mimeType: text("mime_type"),
+  fileSizeBytes: integer("file_size_bytes"),
+  metadata: json("metadata"), // { width, height, format, hex, fontFamily, etc. }
+  sortOrder: integer("sort_order").default(0),
+  createdById: integer("created_by_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 10: Brand Voice Rules ─────────────────────────────────────────────
+
+export const brandVoiceRules = pgTable("brand_voice_rules", {
+  id: serial("id").primaryKey(),
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "cascade" }), // null = company-wide
+  name: text("name").notNull(),
+  description: text("description"),
+  doExample: text("do_example"),    // "Use active voice: 'Watch now' not 'Can be watched'"
+  dontExample: text("dont_example"), // "Don't use 'content' — say 'film', 'clip', 'trailer'"
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Phase 10: Social Profiles ───────────────────────────────────────────────
+
+export const socialProfiles = pgTable("social_profiles", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull(), // instagram, tiktok, x, youtube, facebook, letterboxd, imdb
+  handle: text("handle").notNull(),
+  profileUrl: text("profile_url").notNull(),
+  bio: text("bio"),
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "cascade" }), // null = company-level
+  followerCount: integer("follower_count"),
+  lastUpdated: timestamp("last_updated"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── Phase 10: Press Kit Items ───────────────────────────────────────────────
+
+export const pressKitItems = pgTable("press_kit_items", {
+  id: serial("id").primaryKey(),
+  titleId: integer("title_id").references(() => titles.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(), // synopsis, tagline, review_quote, still, trailer_link, contact, laurel, fact_sheet
+  label: text("label"),
+  content: text("content"), // text content or URL
+  attribution: text("attribution"), // e.g. "Dread Central" for review quotes
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// ─── Phase 10: Insert schemas ────────────────────────────────────────────────
+
+export const insertClickEventSchema = createInsertSchema(clickEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBrandAssetSchema = createInsertSchema(brandAssets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBrandVoiceRuleSchema = createInsertSchema(brandVoiceRules).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSocialProfileSchema = createInsertSchema(socialProfiles).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertPressKitItemSchema = createInsertSchema(pressKitItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type ClickEvent = typeof clickEvents.$inferSelect;
+export type InsertClickEvent = z.infer<typeof insertClickEventSchema>;
+export type BrandAsset = typeof brandAssets.$inferSelect;
+export type InsertBrandAsset = z.infer<typeof insertBrandAssetSchema>;
+export type BrandVoiceRule = typeof brandVoiceRules.$inferSelect;
+export type InsertBrandVoiceRule = z.infer<typeof insertBrandVoiceRuleSchema>;
+export type SocialProfile = typeof socialProfiles.$inferSelect;
+export type InsertSocialProfile = z.infer<typeof insertSocialProfileSchema>;
+export type PressKitItem = typeof pressKitItems.$inferSelect;
+export type InsertPressKitItem = z.infer<typeof insertPressKitItemSchema>;
+
 // ─── Exported Types ───────────────────────────────────────────────────────────
 
 export type User = typeof users.$inferSelect;

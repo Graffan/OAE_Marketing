@@ -1,7 +1,7 @@
 import { db } from "./db.js";
-import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory, morganTasks, morganAutoApproveRules } from "@shared/schema.js";
+import { users, appSettings, titles, clips, campaigns, projects, regionalDestinations, smartLinks, analyticsEvents, clipPosts, aiLogs, campaignContents, promptTemplates, notifications, socialConnections, scheduledPosts, morganConversations, morganMessages, morganMemory, morganTasks, morganAutoApproveRules, clickEvents, brandAssets, brandVoiceRules, socialProfiles, pressKitItems } from "@shared/schema.js";
 import { eq, count, and, inArray, lte, gte, isNotNull, sql, desc, asc } from "drizzle-orm";
-import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType, MorganTask, InsertMorganTask, MorganAutoApproveRule, InsertMorganAutoApproveRule } from "@shared/schema.js";
+import type { User, AppSettings, Title, InsertTitle, Project, InsertProject, Clip, InsertUser, RegionalDestination, SmartLink, AnalyticsEvent, ClipPost, Campaign, InsertCampaign, AiLog, InsertAiLog, CampaignContent, InsertCampaignContent, PromptTemplate, InsertPromptTemplate, Notification, NotificationType, SocialConnection, InsertSocialConnection, ScheduledPost, InsertScheduledPost, MorganConversation, InsertMorganConversation, MorganMessage, InsertMorganMessage, MorganMemory, InsertMorganMemory, MorganMemoryType, MorganTask, InsertMorganTask, MorganAutoApproveRule, InsertMorganAutoApproveRule, ClickEvent, InsertClickEvent, BrandAsset, InsertBrandAsset, BrandVoiceRule, InsertBrandVoiceRule, SocialProfile, InsertSocialProfile, PressKitItem, InsertPressKitItem } from "@shared/schema.js";
 import type { SQL } from "drizzle-orm";
 import bcrypt from "bcrypt";
 
@@ -1727,4 +1727,208 @@ export async function updateMorganAutoApproveRule(
 
 export async function deleteMorganAutoApproveRule(id: number): Promise<void> {
   await db.delete(morganAutoApproveRules).where(eq(morganAutoApproveRules.id, id));
+}
+
+// ─── Phase 10: Click Events ──────────────────────────────────────────────────
+
+export async function getClickEvents(filters: {
+  smartLinkId?: number;
+  slug?: string;
+  country?: string;
+  from?: Date;
+  to?: Date;
+  limit?: number;
+}): Promise<ClickEvent[]> {
+  const conditions: SQL[] = [];
+  if (filters.smartLinkId) conditions.push(eq(clickEvents.smartLinkId, filters.smartLinkId));
+  if (filters.slug) conditions.push(eq(clickEvents.slug, filters.slug));
+  if (filters.country) conditions.push(eq(clickEvents.country, filters.country));
+  if (filters.from) conditions.push(gte(clickEvents.createdAt, filters.from));
+  if (filters.to) conditions.push(lte(clickEvents.createdAt, filters.to));
+
+  return db
+    .select()
+    .from(clickEvents)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(clickEvents.createdAt))
+    .limit(filters.limit ?? 500);
+}
+
+export async function getClickEventStats(smartLinkId?: number): Promise<{
+  totalClicks: number;
+  byCountry: Array<{ country: string; clicks: number }>;
+  byPlatform: Array<{ platform: string; clicks: number }>;
+  byDay: Array<{ day: string; clicks: number }>;
+}> {
+  const condition = smartLinkId ? eq(clickEvents.smartLinkId, smartLinkId) : undefined;
+
+  const [totalResult] = await db
+    .select({ total: count() })
+    .from(clickEvents)
+    .where(condition);
+
+  const byCountry = await db
+    .select({
+      country: clickEvents.country,
+      clicks: count(),
+    })
+    .from(clickEvents)
+    .where(condition)
+    .groupBy(clickEvents.country)
+    .orderBy(desc(count()))
+    .limit(20);
+
+  const byPlatform = await db
+    .select({
+      platform: clickEvents.platform,
+      clicks: count(),
+    })
+    .from(clickEvents)
+    .where(condition)
+    .groupBy(clickEvents.platform)
+    .orderBy(desc(count()));
+
+  const byDay = await db
+    .select({
+      day: sql<string>`date(${clickEvents.createdAt})`,
+      clicks: count(),
+    })
+    .from(clickEvents)
+    .where(condition)
+    .groupBy(sql`date(${clickEvents.createdAt})`)
+    .orderBy(desc(sql`date(${clickEvents.createdAt})`))
+    .limit(30);
+
+  return {
+    totalClicks: totalResult?.total ?? 0,
+    byCountry: byCountry.map((r) => ({ country: r.country ?? "Unknown", clicks: r.clicks })),
+    byPlatform: byPlatform.map((r) => ({ platform: r.platform ?? "unknown", clicks: r.clicks })),
+    byDay: byDay.map((r) => ({ day: r.day, clicks: r.clicks })),
+  };
+}
+
+// ─── Phase 10: Brand Assets ──────────────────────────────────────────────────
+
+export async function getBrandAssets(titleId?: number | null): Promise<BrandAsset[]> {
+  const condition = titleId === undefined
+    ? undefined
+    : titleId === null
+      ? sql`${brandAssets.titleId} IS NULL`
+      : eq(brandAssets.titleId, titleId);
+
+  return db
+    .select()
+    .from(brandAssets)
+    .where(condition)
+    .orderBy(asc(brandAssets.sortOrder), desc(brandAssets.createdAt));
+}
+
+export async function createBrandAsset(data: InsertBrandAsset): Promise<BrandAsset> {
+  const [created] = await db.insert(brandAssets).values(data as any).returning();
+  return created;
+}
+
+export async function updateBrandAsset(id: number, data: Partial<InsertBrandAsset>): Promise<BrandAsset | undefined> {
+  const [updated] = await db
+    .update(brandAssets)
+    .set({ ...data, updatedAt: new Date() } as any)
+    .where(eq(brandAssets.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteBrandAsset(id: number): Promise<void> {
+  await db.delete(brandAssets).where(eq(brandAssets.id, id));
+}
+
+// ─── Phase 10: Brand Voice Rules ─────────────────────────────────────────────
+
+export async function getBrandVoiceRules(titleId?: number | null): Promise<BrandVoiceRule[]> {
+  const condition = titleId === undefined
+    ? undefined
+    : titleId === null
+      ? sql`${brandVoiceRules.titleId} IS NULL`
+      : eq(brandVoiceRules.titleId, titleId);
+
+  return db
+    .select()
+    .from(brandVoiceRules)
+    .where(condition)
+    .orderBy(asc(brandVoiceRules.sortOrder));
+}
+
+export async function createBrandVoiceRule(data: InsertBrandVoiceRule): Promise<BrandVoiceRule> {
+  const [created] = await db.insert(brandVoiceRules).values(data as any).returning();
+  return created;
+}
+
+export async function updateBrandVoiceRule(id: number, data: Partial<InsertBrandVoiceRule>): Promise<BrandVoiceRule | undefined> {
+  const [updated] = await db
+    .update(brandVoiceRules)
+    .set({ ...data, updatedAt: new Date() } as any)
+    .where(eq(brandVoiceRules.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteBrandVoiceRule(id: number): Promise<void> {
+  await db.delete(brandVoiceRules).where(eq(brandVoiceRules.id, id));
+}
+
+// ─── Phase 10: Social Profiles ───────────────────────────────────────────────
+
+export async function getSocialProfiles(titleId?: number | null): Promise<SocialProfile[]> {
+  const condition = titleId === undefined
+    ? undefined
+    : titleId === null
+      ? sql`${socialProfiles.titleId} IS NULL`
+      : eq(socialProfiles.titleId, titleId);
+
+  return db.select().from(socialProfiles).where(condition).orderBy(asc(socialProfiles.platform));
+}
+
+export async function createSocialProfile(data: InsertSocialProfile): Promise<SocialProfile> {
+  const [created] = await db.insert(socialProfiles).values(data as any).returning();
+  return created;
+}
+
+export async function updateSocialProfile(id: number, data: Partial<InsertSocialProfile>): Promise<SocialProfile | undefined> {
+  const [updated] = await db
+    .update(socialProfiles)
+    .set(data as any)
+    .where(eq(socialProfiles.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deleteSocialProfile(id: number): Promise<void> {
+  await db.delete(socialProfiles).where(eq(socialProfiles.id, id));
+}
+
+// ─── Phase 10: Press Kit Items ───────────────────────────────────────────────
+
+export async function getPressKitItems(titleId: number): Promise<PressKitItem[]> {
+  return db
+    .select()
+    .from(pressKitItems)
+    .where(eq(pressKitItems.titleId, titleId))
+    .orderBy(asc(pressKitItems.sortOrder));
+}
+
+export async function createPressKitItem(data: InsertPressKitItem): Promise<PressKitItem> {
+  const [created] = await db.insert(pressKitItems).values(data as any).returning();
+  return created;
+}
+
+export async function updatePressKitItem(id: number, data: Partial<InsertPressKitItem>): Promise<PressKitItem | undefined> {
+  const [updated] = await db
+    .update(pressKitItems)
+    .set(data as any)
+    .where(eq(pressKitItems.id, id))
+    .returning();
+  return updated;
+}
+
+export async function deletePressKitItem(id: number): Promise<void> {
+  await db.delete(pressKitItems).where(eq(pressKitItems.id, id));
 }

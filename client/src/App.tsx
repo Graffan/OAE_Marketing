@@ -21,6 +21,8 @@ import SchedulePage from "@/pages/SchedulePage";
 import CalendarPage from "@/pages/CalendarPage";
 import MorganPage from "@/pages/MorganPage";
 import MorganStatusPage from "@/pages/MorganStatusPage";
+import BrandHubPage from "@/pages/BrandHubPage";
+import LinkAnalyticsPage from "@/pages/LinkAnalyticsPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -35,6 +37,8 @@ import {
   Send,
   BrainCircuit,
   Activity,
+  Palette,
+  MousePointerClick,
   Settings,
   LogOut,
   Sun,
@@ -90,6 +94,8 @@ function Sidebar() {
     { href: "/calendar",     label: "Calendar",     icon: CalendarDays,    roles: null },
     { href: "/morgan",       label: "Morgan",       icon: BrainCircuit,    roles: null },
     { href: "/morgan/status", label: "Morgan Ops",   icon: Activity,        roles: OPERATOR_AND_ABOVE },
+    { href: "/brand",         label: "Brand Hub",    icon: Palette,         roles: OPERATOR_AND_ABOVE },
+    { href: "/link-analytics", label: "Link Stats",  icon: MousePointerClick, roles: OPERATOR_AND_ABOVE },
     { href: "/analytics",    label: "Analytics",    icon: BarChart3,       roles: null },
     { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
   ].filter(({ roles }) => !roles || roles.includes(role));
@@ -229,6 +235,8 @@ export default function App() {
             <Route path="/calendar"     component={CalendarPage} />
             <Route path="/morgan/status" component={MorganStatusPage} />
             <Route path="/morgan"       component={MorganPage} />
+            <Route path="/brand"          component={BrandHubPage} />
+            <Route path="/link-analytics" component={LinkAnalyticsPage} />
             <Route path="/analytics"    component={AnalyticsPage} />
             <Route path="/admin"        component={AdminPage} />
             <Route>

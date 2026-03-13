@@ -122,6 +122,24 @@ import {
   createMorganAutoApproveRule,
   updateMorganAutoApproveRule,
   deleteMorganAutoApproveRule,
+  getClickEvents,
+  getClickEventStats,
+  getBrandAssets,
+  createBrandAsset,
+  updateBrandAsset,
+  deleteBrandAsset,
+  getBrandVoiceRules,
+  createBrandVoiceRule,
+  updateBrandVoiceRule,
+  deleteBrandVoiceRule,
+  getSocialProfiles,
+  createSocialProfile,
+  updateSocialProfile,
+  deleteSocialProfile,
+  getPressKitItems,
+  createPressKitItem,
+  updatePressKitItem,
+  deletePressKitItem,
 } from "./storage.js";
 import { requireAuth, requireAdmin, requireOperator, requireReviewer } from "./auth.js";
 import { syncProjectClips } from "./services/dropbox.js";
@@ -129,6 +147,7 @@ import { resolveCountryCode } from "./services/geoip.js";
 import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
 import { chatWithMorgan } from "./services/morgan-chat.js";
 import { runTask as runMorganTask, startMorganScheduler } from "./services/morgan-daily-cycle.js";
+import { handleSmartLinkRedirect } from "./services/smart-link-redirect.js";
 import { insertCampaignSchema, insertCampaignContentSchema, insertSocialConnectionSchema, insertScheduledPostSchema } from "@shared/schema.js";
 
 function applyTrackingParams(baseUrl: string, template: string, slug: string): string {
@@ -2159,6 +2178,213 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
   app.delete("/api/morgan/auto-approve-rules/:id", requireAuth, requireAdmin, async (req, res) => {
     try {
       await deleteMorganAutoApproveRule(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Smart Link Redirect ──────────────────────────────────────────
+
+  app.get("/w/:slug", async (req, res) => {
+    try {
+      const result = await handleSmartLinkRedirect(req, req.params.slug);
+      if ("error" in result) {
+        return res.status(result.status).json({ message: result.error });
+      }
+      return res.redirect(302, result.redirectUrl);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Click Event Analytics ──────────────────────────────────────────
+
+  app.get("/api/link-analytics/events", requireAuth, async (req, res) => {
+    try {
+      const filters: any = {};
+      if (req.query.smartLinkId) filters.smartLinkId = Number(req.query.smartLinkId);
+      if (req.query.slug) filters.slug = String(req.query.slug);
+      if (req.query.country) filters.country = String(req.query.country);
+      if (req.query.from) filters.from = new Date(String(req.query.from));
+      if (req.query.to) filters.to = new Date(String(req.query.to));
+      if (req.query.limit) filters.limit = Number(req.query.limit);
+      const events = await getClickEvents(filters);
+      res.json(events);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/link-analytics/stats", requireAuth, async (req, res) => {
+    try {
+      const smartLinkId = req.query.smartLinkId ? Number(req.query.smartLinkId) : undefined;
+      const stats = await getClickEventStats(smartLinkId);
+      res.json(stats);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Brand Assets ───────────────────────────────────────────────────
+
+  app.get("/api/brand/assets", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId !== undefined
+        ? req.query.titleId === "null" ? null : Number(req.query.titleId)
+        : undefined;
+      const assets = await getBrandAssets(titleId);
+      res.json(assets);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/brand/assets", requireOperator, async (req, res) => {
+    try {
+      const asset = await createBrandAsset(req.body);
+      res.status(201).json(asset);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/brand/assets/:id", requireOperator, async (req, res) => {
+    try {
+      const asset = await updateBrandAsset(Number(req.params.id), req.body);
+      if (!asset) return res.status(404).json({ message: "Asset not found" });
+      res.json(asset);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/brand/assets/:id", requireOperator, async (req, res) => {
+    try {
+      await deleteBrandAsset(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Brand Voice Rules ──────────────────────────────────────────────
+
+  app.get("/api/brand/voice", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId !== undefined
+        ? req.query.titleId === "null" ? null : Number(req.query.titleId)
+        : undefined;
+      const rules = await getBrandVoiceRules(titleId);
+      res.json(rules);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/brand/voice", requireOperator, async (req, res) => {
+    try {
+      const rule = await createBrandVoiceRule(req.body);
+      res.status(201).json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/brand/voice/:id", requireOperator, async (req, res) => {
+    try {
+      const rule = await updateBrandVoiceRule(Number(req.params.id), req.body);
+      if (!rule) return res.status(404).json({ message: "Rule not found" });
+      res.json(rule);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/brand/voice/:id", requireOperator, async (req, res) => {
+    try {
+      await deleteBrandVoiceRule(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Social Profiles ────────────────────────────────────────────────
+
+  app.get("/api/brand/social-profiles", requireAuth, async (req, res) => {
+    try {
+      const titleId = req.query.titleId !== undefined
+        ? req.query.titleId === "null" ? null : Number(req.query.titleId)
+        : undefined;
+      const profiles = await getSocialProfiles(titleId);
+      res.json(profiles);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/brand/social-profiles", requireOperator, async (req, res) => {
+    try {
+      const profile = await createSocialProfile(req.body);
+      res.status(201).json(profile);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/brand/social-profiles/:id", requireOperator, async (req, res) => {
+    try {
+      const profile = await updateSocialProfile(Number(req.params.id), req.body);
+      if (!profile) return res.status(404).json({ message: "Profile not found" });
+      res.json(profile);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/brand/social-profiles/:id", requireOperator, async (req, res) => {
+    try {
+      await deleteSocialProfile(Number(req.params.id));
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Phase 10: Press Kit Items ────────────────────────────────────────────────
+
+  app.get("/api/brand/press-kit/:titleId", requireAuth, async (req, res) => {
+    try {
+      const items = await getPressKitItems(Number(req.params.titleId));
+      res.json(items);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/brand/press-kit", requireOperator, async (req, res) => {
+    try {
+      const item = await createPressKitItem(req.body);
+      res.status(201).json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/brand/press-kit/:id", requireOperator, async (req, res) => {
+    try {
+      const item = await updatePressKitItem(Number(req.params.id), req.body);
+      if (!item) return res.status(404).json({ message: "Item not found" });
+      res.json(item);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/brand/press-kit/:id", requireOperator, async (req, res) => {
+    try {
+      await deletePressKitItem(Number(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
