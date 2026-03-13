@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Film, Video, Globe, Link2, ArrowRight,
   AlertTriangle, CheckCircle, TrendingUp, Activity,
+  BrainCircuit, Send, MessageSquare, Clock, Inbox,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTitles } from "@/hooks/useTitles";
@@ -10,6 +11,8 @@ import { useClips } from "@/hooks/useClips";
 import { useSmartLinks } from "@/hooks/useSmartLinks";
 import { useDestinationAlerts } from "@/hooks/useDestinations";
 import { useAnalyticsDashboard } from "@/hooks/useAnalytics";
+import { useMorganConversations, useCreateMorganConversation, useSendMessage } from "@/hooks/useMorgan";
+import { useMorganTasks } from "@/hooks/useMorganTasks";
 import ExpiryAlerts from "@/components/ExpiryAlerts";
 import { useAuth } from "@/hooks/useAuth";
 import { fetchJSON } from "@/lib/queryClient";
@@ -18,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import type { Campaign, Title, Clip } from "@shared/schema";
 import type { RotationByProject } from "@/hooks/useAnalytics";
 
@@ -90,6 +94,149 @@ function HealthRow({ ok, okMessage, failMessage, count }: { ok: boolean; okMessa
   );
 }
 
+// ─── Morgan Widget ────────────────────────────────────────────────────────────
+
+function MorganWidget() {
+  const [, navigate] = useLocation();
+  const [quickMessage, setQuickMessage] = useState("");
+  const [morganReply, setMorganReply] = useState<string | null>(null);
+  const [isAsking, setIsAsking] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: conversations = [] } = useMorganConversations();
+  const createConvo = useCreateMorganConversation();
+  const sendMessage = useSendMessage();
+  const { data: tasks = [] } = useMorganTasks();
+
+  // Recent tasks summary
+  const recentTasks = (tasks as any[]).slice(0, 3);
+  const pendingApprovals = (tasks as any[]).filter((t: any) => t.taskType === "content_draft" && t.status === "completed").length;
+
+  async function handleQuickAsk() {
+    if (!quickMessage.trim() || isAsking) return;
+    setIsAsking(true);
+    setMorganReply(null);
+    try {
+      // Find or create a conversation
+      let convoId: number;
+      const existing = (conversations as any[]).find((c: any) => !c.archivedAt);
+      if (existing) {
+        convoId = existing.id;
+      } else {
+        const newConvo = await createConvo.mutateAsync({ title: "Dashboard Quick Chat" });
+        convoId = newConvo.id;
+      }
+      const result = await sendMessage.mutateAsync({ conversationId: convoId, message: quickMessage });
+      setMorganReply(result.response);
+      setQuickMessage("");
+    } catch (err: any) {
+      setMorganReply(`Sorry, I couldn't process that: ${err.message}`);
+    } finally {
+      setIsAsking(false);
+    }
+  }
+
+  return (
+    <div>
+      <SectionHeader title="Morgan" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Quick Chat */}
+        <Card className="lg:col-span-2">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="h-8 w-8 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0">
+                <BrainCircuit className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Ask Morgan</p>
+                <p className="text-[11px] text-muted-foreground">What should I post today? Plan a campaign for Last Moon?</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                ref={inputRef}
+                value={quickMessage}
+                onChange={(e) => setQuickMessage(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleQuickAsk()}
+                placeholder="Ask Morgan anything..."
+                disabled={isAsking}
+                className="text-sm"
+              />
+              <Button
+                size="sm"
+                onClick={handleQuickAsk}
+                disabled={!quickMessage.trim() || isAsking}
+                className="shrink-0"
+              >
+                {isAsking ? (
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+
+            {morganReply && (
+              <div className="mt-3 p-3 rounded-lg bg-violet-500/5 border border-violet-500/10">
+                <p className="text-sm text-foreground/90 whitespace-pre-wrap">{morganReply}</p>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mt-3">
+              <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => navigate("/morgan")}>
+                <MessageSquare className="h-3 w-3 mr-1" /> Full Chat
+              </Button>
+              <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => navigate("/morgan/status")}>
+                <Inbox className="h-3 w-3 mr-1" /> Approval Queue
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Task Status */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium">Recent Activity</p>
+              <Link href="/morgan/status">
+                <Button variant="ghost" size="sm" className="text-xs h-6">View All</Button>
+              </Link>
+            </div>
+
+            {recentTasks.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                No tasks yet. Morgan will start running scheduled tasks once AI providers are configured.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {recentTasks.map((task: any) => (
+                  <div key={task.id} className="flex items-center gap-2.5 py-1">
+                    <div className={cn(
+                      "h-1.5 w-1.5 rounded-full shrink-0",
+                      task.status === "completed" ? "bg-emerald-500" :
+                      task.status === "failed" ? "bg-destructive" :
+                      task.status === "running" ? "bg-blue-500 animate-pulse" : "bg-muted-foreground"
+                    )} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs truncate">{task.taskType.replace(/_/g, " ")}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {task.completedAt
+                          ? new Date(task.completedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : task.status}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 // ─── DashboardPage ─────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [, navigate] = useLocation();
@@ -139,6 +286,9 @@ export default function DashboardPage() {
             <StatCard label="Smart Links" value={smartLinks?.length ?? 0} icon={Link2} href="/smart-links" loading={linksLoading} />
           </div>
         </div>
+
+        {/* Morgan Command Center */}
+        <MorganWidget />
 
         {/* Alerts */}
         <div>

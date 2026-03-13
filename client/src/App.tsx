@@ -86,25 +86,66 @@ function Sidebar() {
   const logoUrl     = settings?.logoUrl;
   const initials    = (user?.username?.[0] ?? "?").toUpperCase();
 
-  const navItems = [
-    { href: "/",             label: "Dashboard",    icon: LayoutDashboard, roles: null },
-    { href: "/titles",       label: "Titles",       icon: Film,            roles: NOT_FREELANCER },
-    { href: "/clips",        label: "Clip Library", icon: Video,           roles: NOT_EXECUTIVE },
-    { href: "/campaigns",    label: "Campaigns",    icon: Megaphone,       roles: REVIEWER_AND_ABOVE },
-    { href: "/destinations", label: "Destinations", icon: Globe,           roles: OPERATOR_AND_ABOVE },
-    { href: "/smart-links",  label: "Smart Links",  icon: Link2,           roles: OPERATOR_AND_ABOVE },
-    { href: "/ai-studio",    label: "AI Studio",    icon: Sparkles,        roles: OPERATOR_AND_ABOVE },
-    { href: "/schedule",     label: "Schedule",     icon: Send,            roles: OPERATOR_AND_ABOVE },
-    { href: "/calendar",     label: "Calendar",     icon: CalendarDays,    roles: null },
-    { href: "/morgan",       label: "Morgan",       icon: BrainCircuit,    roles: null },
-    { href: "/morgan/status", label: "Morgan Ops",   icon: Activity,        roles: OPERATOR_AND_ABOVE },
-    { href: "/brand",         label: "Brand Hub",    icon: Palette,         roles: OPERATOR_AND_ABOVE },
-    { href: "/link-analytics", label: "Link Stats",  icon: MousePointerClick, roles: OPERATOR_AND_ABOVE },
-    { href: "/audience",      label: "Audience",     icon: UsersRound,      roles: OPERATOR_AND_ABOVE },
-    { href: "/email",         label: "Email",        icon: Mail,            roles: OPERATOR_AND_ABOVE },
-    { href: "/analytics",    label: "Analytics",    icon: BarChart3,       roles: null },
-    { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
-  ].filter(({ roles }) => !roles || roles.includes(role));
+  type NavItem = { href: string; label: string; icon: React.ElementType; roles: string[] | null };
+  type NavGroup = { label: string; items: NavItem[] };
+
+  const navGroups: NavGroup[] = [
+    {
+      label: "",
+      items: [
+        { href: "/",             label: "Dashboard",    icon: LayoutDashboard, roles: null },
+      ],
+    },
+    {
+      label: "Morgan",
+      items: [
+        { href: "/morgan",       label: "Chat",         icon: BrainCircuit,    roles: null },
+        { href: "/morgan/status", label: "Ops & Queue",  icon: Activity,        roles: OPERATOR_AND_ABOVE },
+      ],
+    },
+    {
+      label: "Content",
+      items: [
+        { href: "/titles",       label: "Titles",       icon: Film,            roles: NOT_FREELANCER },
+        { href: "/clips",        label: "Clip Library", icon: Video,           roles: NOT_EXECUTIVE },
+        { href: "/campaigns",    label: "Campaigns",    icon: Megaphone,       roles: REVIEWER_AND_ABOVE },
+        { href: "/schedule",     label: "Schedule",     icon: Send,            roles: OPERATOR_AND_ABOVE },
+        { href: "/calendar",     label: "Calendar",     icon: CalendarDays,    roles: null },
+      ],
+    },
+    {
+      label: "Distribution",
+      items: [
+        { href: "/destinations", label: "Destinations", icon: Globe,           roles: OPERATOR_AND_ABOVE },
+        { href: "/smart-links",  label: "Smart Links",  icon: Link2,           roles: OPERATOR_AND_ABOVE },
+        { href: "/brand",        label: "Brand Hub",    icon: Palette,         roles: OPERATOR_AND_ABOVE },
+      ],
+    },
+    {
+      label: "Intelligence",
+      items: [
+        { href: "/ai-studio",    label: "AI Studio",    icon: Sparkles,        roles: OPERATOR_AND_ABOVE },
+        { href: "/audience",     label: "Audience",     icon: UsersRound,      roles: OPERATOR_AND_ABOVE },
+        { href: "/email",        label: "Email",        icon: Mail,            roles: OPERATOR_AND_ABOVE },
+        { href: "/analytics",   label: "Analytics",    icon: BarChart3,       roles: null },
+        { href: "/link-analytics", label: "Link Stats", icon: MousePointerClick, roles: OPERATOR_AND_ABOVE },
+      ],
+    },
+    {
+      label: "",
+      items: [
+        { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
+      ],
+    },
+  ];
+
+  // Filter by role
+  const filteredGroups = navGroups
+    .map((g) => ({
+      ...g,
+      items: g.items.filter(({ roles }) => !roles || roles.includes(role)),
+    }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <aside className="w-[220px] flex-shrink-0 flex flex-col bg-[#060d1b] text-white border-r border-white/[0.06]">
@@ -127,36 +168,44 @@ function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/25">
-          Navigation
-        </div>
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? location === "/" : location.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-medium transition-colors duration-150",
-                active ? "text-white" : "text-white/50 hover:text-white/85"
-              )}
-            >
-              {active && (
-                <motion.div
-                  layoutId="nav-pill"
-                  className="absolute inset-0 rounded-xl bg-rose-600/90 shadow-[0_2px_8px_rgba(225,29,72,0.4)]"
-                  transition={{ type: "spring", stiffness: 350, damping: 30 }}
-                />
-              )}
-              {!active && (
-                <span className="absolute inset-0 rounded-xl hover:bg-white/[0.06] transition-colors" />
-              )}
-              <Icon className={cn("relative z-10 h-[15px] w-[15px] flex-shrink-0", active ? "text-white" : "text-white/40")} />
-              <span className="relative z-10">{label}</span>
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-3 py-3 overflow-y-auto">
+        {filteredGroups.map((group, gi) => (
+          <div key={gi} className={cn(gi > 0 && "mt-4")}>
+            {group.label && (
+              <div className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/25">
+                {group.label}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map(({ href, label, icon: Icon }) => {
+                const active = href === "/" ? location === "/" : location.startsWith(href);
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      "relative flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-colors duration-150",
+                      active ? "text-white" : "text-white/50 hover:text-white/85"
+                    )}
+                  >
+                    {active && (
+                      <motion.div
+                        layoutId="nav-pill"
+                        className="absolute inset-0 rounded-xl bg-rose-600/90 shadow-[0_2px_8px_rgba(225,29,72,0.4)]"
+                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                      />
+                    )}
+                    {!active && (
+                      <span className="absolute inset-0 rounded-xl hover:bg-white/[0.06] transition-colors" />
+                    )}
+                    <Icon className={cn("relative z-10 h-[15px] w-[15px] flex-shrink-0", active ? "text-white" : "text-white/40")} />
+                    <span className="relative z-10">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}
