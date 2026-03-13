@@ -32,6 +32,7 @@ import {
   updateMorganTask,
 } from "../storage.js";
 import { chatWithMorgan } from "./morgan-chat.js";
+import { processPublishQueue } from "./publish-engine.js";
 
 // ─── Task Runner ─────────────────────────────────────────────────────────────
 
@@ -176,16 +177,12 @@ Keep it conversational — this goes to Ryan, Jon, and Geoff as a notification.`
 // ─── Publish Approved ────────────────────────────────────────────────────────
 
 async function runPublishApproved(): Promise<Record<string, unknown>> {
-  const duePosts = await getPostsDueForPublishing();
-
-  // For now, mark posts as "publishing" — actual platform API calls
-  // will be added when platform OAuth is integrated
-  const results = {
-    postsChecked: (duePosts as any[]).length,
-    note: "Platform publishing requires OAuth integration. Posts marked as due for publishing.",
+  const result = await processPublishQueue();
+  return {
+    postsProcessed: result.processed,
+    published: result.published,
+    failed: result.failed,
   };
-
-  return results;
 }
 
 // ─── Evening Digest ──────────────────────────────────────────────────────────

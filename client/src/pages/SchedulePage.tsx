@@ -16,6 +16,7 @@ import {
   useCancelPost,
   useRetryPost,
   useDeleteScheduledPost,
+  usePublishNow,
 } from "@/hooks/useScheduledPosts";
 import PostComposer from "@/components/schedule/PostComposer";
 import {
@@ -35,6 +36,7 @@ import {
   Ban,
   Loader2,
   FileText,
+  Zap,
 } from "lucide-react";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -124,13 +126,14 @@ function PostRow({ post }: { post: any }) {
   const cancelPost = useCancelPost();
   const retryPost = useRetryPost();
   const deletePost = useDeleteScheduledPost();
+  const publishNow = usePublishNow();
 
   const status = STATUS_CONFIG[post.status] ?? STATUS_CONFIG.draft;
   const PlatformIcon = PLATFORM_ICONS[post.platform] ?? Send;
   const platformColor = PLATFORM_COLORS[post.platform] ?? "text-muted-foreground";
   const StatusIcon = status.icon;
   const isPending =
-    approvePost.isPending || cancelPost.isPending || retryPost.isPending || deletePost.isPending;
+    approvePost.isPending || cancelPost.isPending || retryPost.isPending || deletePost.isPending || publishNow.isPending;
 
   return (
     <div className="group flex items-start gap-4 p-4 rounded-xl border border-border/50 bg-card hover:border-border/80 transition-colors">
@@ -183,6 +186,18 @@ function PostRow({ post }: { post: any }) {
             title="Approve"
           >
             <ThumbsUp className="h-3.5 w-3.5" />
+          </Button>
+        )}
+        {(post.status === "draft" || post.status === "queued" || post.status === "scheduled") && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-xs text-emerald-600"
+            disabled={isPending}
+            onClick={() => publishNow.mutate(post.id)}
+            title="Publish Now"
+          >
+            <Zap className="h-3.5 w-3.5" />
           </Button>
         )}
         {(post.status === "draft" || post.status === "scheduled" || post.status === "queued") && (

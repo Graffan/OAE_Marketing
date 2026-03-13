@@ -177,6 +177,7 @@ import { resolveCountryCode } from "./services/geoip.js";
 import { generateText, getManualPrompt, buildPrompt } from "./services/ai-orchestrator.js";
 import { chatWithMorgan } from "./services/morgan-chat.js";
 import { runTask as runMorganTask, startMorganScheduler } from "./services/morgan-daily-cycle.js";
+import { startPublishScheduler } from "./services/publish-engine.js";
 import { handleSmartLinkRedirect } from "./services/smart-link-redirect.js";
 import { insertCampaignSchema, insertCampaignContentSchema, insertSocialConnectionSchema, insertScheduledPostSchema } from "@shared/schema.js";
 
@@ -1888,7 +1889,12 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
   app.post("/api/scheduled-posts", requireAuth, requireOperator, async (req, res) => {
     try {
       const parsed = insertScheduledPostSchema.parse(req.body);
-      const post = await createScheduledPost({ ...parsed, createdById: (req.user as any).id });
+      const data = {
+        ...parsed,
+        scheduledAt: parsed.scheduledAt ? new Date(parsed.scheduledAt) : null,
+        createdById: (req.user as any).id,
+      };
+      const post = await createScheduledPost(data as any);
       res.status(201).json(post);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1943,6 +1949,49 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       const deleted = await deleteScheduledPost(Number(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Post not found" });
       res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Publish now — immediately trigger publish for a scheduled post
+  app.post("/api/scheduled-posts/:id/publish-now", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { processPublishQueue } = await import("./services/publish-engine.js");
+      const post = await getScheduledPostById(Number(req.params.id));
+      if (!post) return res.status(404).json({ message: "Post not found" });
+      if (!["draft", "queued", "scheduled"].includes(post.status)) {
+        return res.status(400).json({ message: `Cannot publish post with status "${post.status}"` });
+      }
+      // Force status to scheduled so the engine picks it up
+      await updateScheduledPost(post.id, { status: "scheduled", scheduledAt: new Date() } as any);
+      const result = await processPublishQueue();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // Bulk create scheduled posts
+  app.post("/api/scheduled-posts/bulk", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { posts } = req.body;
+      if (!Array.isArray(posts) || posts.length === 0) {
+        return res.status(400).json({ message: "posts array is required" });
+      }
+      if (posts.length > 50) {
+        return res.status(400).json({ message: "Maximum 50 posts per bulk request" });
+      }
+      const created = [];
+      for (const postData of posts) {
+        const post = await createScheduledPost({
+          ...postData,
+          scheduledAt: postData.scheduledAt ? new Date(postData.scheduledAt) : null,
+          createdById: (req.user as any).id,
+        });
+        created.push(post);
+      }
+      res.status(201).json(created);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -2610,8 +2659,9 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
     try { await deleteCrossPromotion(Number(req.params.id)); res.json({ success: true }); } catch (err: any) { res.status(500).json({ message: err.message }); }
   });
 
-  // Start Morgan's autonomous scheduler
+  // Start Morgan's autonomous scheduler + publish engine
   startMorganScheduler();
+  startPublishScheduler();
 
   const server = http.createServer(app);
   return server;

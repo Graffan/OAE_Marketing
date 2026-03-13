@@ -148,3 +148,39 @@ export function useDeleteScheduledPost() {
     },
   });
 }
+
+export function usePublishNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      fetch(`/api/scheduled-posts/${id}/publish-now`, {
+        method: "POST",
+        credentials: "include",
+      }).then((r) => {
+        if (!r.ok) throw new Error("Failed to publish");
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+  });
+}
+
+export function useBulkCreatePosts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (posts: Record<string, unknown>[]) =>
+      fetch("/api/scheduled-posts/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ posts }),
+        credentials: "include",
+      }).then((r) => {
+        if (!r.ok) throw new Error("Failed to create posts");
+        return r.json();
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/scheduled-posts"] });
+    },
+  });
+}
