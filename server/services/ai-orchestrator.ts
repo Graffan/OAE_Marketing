@@ -190,6 +190,36 @@ export function normalizeJsonContent(raw: string): string {
   }
 }
 
+// ─── Retry with exponential backoff (OpenClaw pattern) ────────────────────────
+
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 2,
+  baseDelayMs = 1000
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isRateLimited =
+        lastError.message.includes("429") ||
+        lastError.message.includes("rate") ||
+        lastError.message.includes("overloaded");
+
+      if (attempt < maxRetries && isRateLimited) {
+        const delay = baseDelayMs * Math.pow(2, attempt);
+        console.log(`[ai-orchestrator] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise((r) => setTimeout(r, delay));
+      } else {
+        throw lastError;
+      }
+    }
+  }
+  throw lastError ?? new Error("Retry exhausted");
+}
+
 // ─── generateText ─────────────────────────────────────────────────────────────
 
 export async function generateText(
@@ -217,13 +247,17 @@ export async function generateText(
       ];
   const providerOrder = [...new Set(baseOrder)];
 
-  // 4. Attempt each provider with fallback
+  // 4. Attempt each provider with failover + retry on rate limits (OpenClaw pattern)
   let lastError: Error | undefined;
 
   for (const provider of providerOrder) {
     const startMs = Date.now();
     try {
-      const result = await callProvider(provider, settings, systemPrompt, userPrompt);
+      const result = await retryWithBackoff(
+        () => callProvider(provider, settings, systemPrompt, userPrompt),
+        2,
+        1000
+      );
       const latencyMs = Date.now() - startMs;
 
       const normalizedContent = normalizeJsonContent(result.content);

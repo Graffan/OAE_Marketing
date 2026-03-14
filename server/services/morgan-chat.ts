@@ -9,6 +9,7 @@ import {
   createAiLog,
 } from "../storage.js";
 import type { MorganMessage, AppSettings } from "@shared/schema.js";
+import { getStrategySummary, getRecentInsights } from "./morgan-insights.js";
 
 // ─── Morgan's System Prompt ──────────────────────────────────────────────────
 
@@ -42,6 +43,10 @@ You have access to:
 - Campaign performance and analytics
 - Social platform connections and scheduled posts
 - Past conversations and decisions (your memory)
+- Google Trends data (entertainment trends, OAE title search interest)
+- Web research (competitor monitoring, news, press coverage)
+- Strategy playbook (what's working, active experiments, learnings)
+- Campaign insights (performance analysis, pattern detection)
 
 ## Tone Examples
 - "Hey! Just looked at the numbers from last week — the TikTok clips for [film] are crushing it. Want me to double down on that angle?"
@@ -56,9 +61,11 @@ You remember things the team tells you. When they share preferences, decisions, 
 // ─── Build context from memory + recent messages ─────────────────────────────
 
 async function buildMorganContext(conversationId: number): Promise<string> {
-  const [memories, messages] = await Promise.all([
+  const [memories, messages, strategySummary, recentInsights] = await Promise.all([
     getMorganMemories({ minImportance: 3, limit: 30 }),
     getMorganMessages(conversationId, 50),
+    getStrategySummary().catch(() => ""),
+    getRecentInsights({ limit: 10 }).catch(() => []),
   ]);
 
   let context = "";
@@ -67,6 +74,17 @@ async function buildMorganContext(conversationId: number): Promise<string> {
     context += "\n## Your Memory\n";
     for (const m of memories) {
       context += `- [${m.type}] ${m.content}\n`;
+    }
+  }
+
+  if (strategySummary) {
+    context += `\n## Strategy Playbook\n${strategySummary}\n`;
+  }
+
+  if (recentInsights.length > 0) {
+    context += "\n## Recent Insights\n";
+    for (const i of recentInsights) {
+      context += `- [${i.type}/${i.category}] ${i.content}\n`;
     }
   }
 

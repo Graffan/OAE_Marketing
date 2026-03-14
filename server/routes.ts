@@ -2263,6 +2263,103 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
     }
   });
 
+  // ─── Morgan: Web Intelligence & Insights ─────────────────────────────────────
+
+  app.get("/api/morgan/insights", requireAuth, async (req, res) => {
+    try {
+      const { getRecentInsights } = await import("./services/morgan-insights.js");
+      const insights = await getRecentInsights({
+        type: req.query.type as string | undefined,
+        category: req.query.category as string | undefined,
+        limit: req.query.limit ? Number(req.query.limit) : 20,
+      });
+      res.json(insights);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/playbook", requireAuth, async (req, res) => {
+    try {
+      const { getPlaybook } = await import("./services/morgan-insights.js");
+      const playbook = await getPlaybook();
+      res.json(playbook);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/experiments", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { startExperiment } = await import("./services/morgan-insights.js");
+      const { hypothesis, metric, baselineValue, targetValue } = req.body;
+      if (!hypothesis || !metric) {
+        return res.status(400).json({ message: "hypothesis and metric are required" });
+      }
+      const experiment = await startExperiment(
+        hypothesis,
+        metric,
+        baselineValue ?? 0,
+        targetValue ?? 0
+      );
+      res.status(201).json(experiment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/experiments/:id/measure", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { measureExperiment } = await import("./services/morgan-insights.js");
+      const { currentValue } = req.body;
+      if (currentValue === undefined) {
+        return res.status(400).json({ message: "currentValue is required" });
+      }
+      const result = await measureExperiment(req.params.id, currentValue);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/trends", requireAuth, async (req, res) => {
+    try {
+      const { generateTrendReport } = await import("./services/web-intelligence.js");
+      const report = await generateTrendReport();
+      res.json(report);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/research", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { researchTopic } = await import("./services/web-intelligence.js");
+      const { topic } = req.body;
+      if (!topic) {
+        return res.status(400).json({ message: "topic is required" });
+      }
+      const result = await researchTopic(topic);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/web-fetch", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { fetchWebContent } = await import("./services/web-intelligence.js");
+      const { url } = req.body;
+      if (!url) {
+        return res.status(400).json({ message: "url is required" });
+      }
+      const result = await fetchWebContent(url);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ─── Phase 10: Smart Link Redirect ──────────────────────────────────────────
 
   app.get("/w/:slug", async (req, res) => {

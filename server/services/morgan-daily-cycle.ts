@@ -33,6 +33,13 @@ import {
 } from "../storage.js";
 import { chatWithMorgan } from "./morgan-chat.js";
 import { processPublishQueue } from "./publish-engine.js";
+import { generateTrendReport, researchTopic } from "./web-intelligence.js";
+import {
+  analyzeCampaignPerformance,
+  runMemoryMaintenance,
+  getStrategySummary,
+  logInsight,
+} from "./morgan-insights.js";
 
 // ─── Task Runner ─────────────────────────────────────────────────────────────
 
@@ -56,18 +63,24 @@ export async function runTask(taskType: string): Promise<Record<string, unknown>
 // ─── Morning Scan ────────────────────────────────────────────────────────────
 
 async function runMorningScan(): Promise<Record<string, unknown>> {
-  const [clips, campaigns, connections, dashboardSummary, healthReport] = await Promise.all([
-    getClips(),
-    getCampaigns(),
-    getActiveSocialConnections(),
-    getAnalyticsDashboardSummary(),
-    getAssetHealthReport(),
-  ]);
+  // Fetch internal data + web intelligence in parallel
+  const [clips, campaigns, connections, dashboardSummary, healthReport, trendReport] =
+    await Promise.all([
+      getClips(),
+      getCampaigns(),
+      getActiveSocialConnections(),
+      getAnalyticsDashboardSummary(),
+      getAssetHealthReport(),
+      generateTrendReport().catch(() => null), // graceful fallback if trends fail
+    ]);
 
   const todayPosts = await getScheduledPosts({ status: "scheduled" });
   const draftPosts = await getScheduledPosts({ status: "draft" });
 
-  const summary = {
+  // Run memory maintenance (decay old, consolidate duplicates)
+  const memMaintenance = await runMemoryMaintenance().catch(() => ({ decayed: 0, consolidated: 0 }));
+
+  const summary: Record<string, unknown> = {
     clipCount: (clips as any[]).length,
     activeCampaigns: (campaigns as any[]).filter((c: any) => c.status === "active").length,
     connectedPlatforms: (connections as any[]).length,
@@ -75,8 +88,35 @@ async function runMorningScan(): Promise<Record<string, unknown>> {
     draftsAwaitingApproval: (draftPosts as any[]).length,
     dashboard: dashboardSummary,
     health: healthReport,
+    memoryMaintenance: memMaintenance,
     timestamp: new Date().toISOString(),
   };
+
+  // Add trend intelligence if available
+  if (trendReport) {
+    summary.trends = {
+      entertainmentTrending: trendReport.entertainmentTrends.slice(0, 5).map((t) => t.keyword),
+      oaeTitleInterest: trendReport.oaeTitleInterest.map((t) => ({
+        title: t.keyword,
+        interest: t.interest,
+        rising: t.rising,
+      })),
+      opportunities: trendReport.opportunities,
+      risks: trendReport.risks,
+    };
+
+    // Log trend opportunities as insights
+    for (const opp of trendReport.opportunities) {
+      await logInsight({
+        type: "trend_alert",
+        category: "trends",
+        content: opp,
+        status: "active",
+        linkedInsightIds: [],
+        source: "morning_scan",
+      }).catch(() => {}); // best-effort
+    }
+  }
 
   return summary;
 }
@@ -103,21 +143,37 @@ async function runContentDraft(): Promise<Record<string, unknown>> {
   // Get or create Morgan's autonomous conversation
   const convId = await getAutonomousConversationId();
 
-  // Ask Morgan to draft content
+  // Get strategy context and trend intelligence for smarter content drafts
+  const [strategySummary, trendReport] = await Promise.all([
+    getStrategySummary().catch(() => ""),
+    generateTrendReport().catch(() => null),
+  ]);
+
+  // Ask Morgan to draft content with full intelligence context
+  const trendContext = trendReport
+    ? `\nTrending in entertainment: ${trendReport.entertainmentTrends.slice(0, 5).map((t) => t.keyword).join(", ")}
+OAE title interest: ${trendReport.oaeTitleInterest.map((t) => `${t.keyword}: ${t.interest}/100 ${t.rising ? "(rising)" : "(flat)"}`).join(", ") || "No data yet"}
+Opportunities: ${trendReport.opportunities.join("; ") || "None identified"}
+Risks: ${trendReport.risks.join("; ") || "None"}`
+    : "";
+
   const prompt = `It's time for your daily content draft. Here's what you're working with:
 
 Connected platforms: ${(connections as any[]).map((c: any) => `${c.platform} (${c.accountName})`).join(", ")}
 Available clips: ${(clips as any[]).length} total
 Top performing clips: ${(topClips as any[]).map((c: any) => `"${c.name}" (score: ${c.engagementScore})`).join(", ") || "No data yet"}
+${trendContext}
+${strategySummary ? `\nYour current strategy insights:\n${strategySummary}` : ""}
 
 Please draft 2-3 post ideas for today. For each, include:
 - Platform recommendation
 - Caption text
 - Suggested hashtags
 - Best time to post
-- Why this content/angle works right now
+- Why this content/angle works right now (reference trends if relevant)
+- Which OAE title or clip to feature
 
-Keep it OAE brand voice — authentic indie film energy, not corporate.`;
+Keep it OAE brand voice — authentic indie film energy, not corporate. If there's a trending topic you can tie into, do it authentically.`;
 
   const result = await chatWithMorgan(convId, prompt);
 
@@ -190,21 +246,28 @@ async function runPublishApproved(): Promise<Record<string, unknown>> {
 async function runEveningDigest(): Promise<Record<string, unknown>> {
   const convId = await getAutonomousConversationId();
 
-  const [todayPosts, dashboardSummary] = await Promise.all([
+  const [todayPosts, dashboardSummary, campaignInsights] = await Promise.all([
     getScheduledPosts({ status: "published" }),
     getAnalyticsDashboardSummary(),
+    analyzeCampaignPerformance().catch(() => []),
   ]);
+
+  const insightsContext = campaignInsights.length > 0
+    ? `\nNew insights from today's analysis:\n${campaignInsights.map((i) => `- [${i.category}] ${i.content}`).join("\n")}`
+    : "";
 
   const prompt = `Time for the evening digest. Here's how today went:
 
 Published posts today: ${(todayPosts as any[]).length}
 Dashboard: ${JSON.stringify(dashboardSummary, null, 2)}
+${insightsContext}
 
 Write a quick evening wrap-up:
 1. What went live today
 2. Early performance signals
-3. Anything to adjust for tomorrow
-4. One thing you're excited about
+3. Insights and patterns you noticed
+4. Anything to adjust for tomorrow
+5. One thing you're excited about
 
 Keep it brief — end-of-day energy.`;
 
@@ -237,26 +300,49 @@ Keep it brief — end-of-day energy.`;
 async function runWeeklyReview(): Promise<Record<string, unknown>> {
   const convId = await getAutonomousConversationId();
 
-  const [dashboardSummary, topClips, healthReport] = await Promise.all([
-    getAnalyticsDashboardSummary(),
-    getTopPerformingClips(10),
-    getAssetHealthReport(),
-  ]);
+  const [dashboardSummary, topClips, healthReport, strategySummary, trendReport, campaignInsights] =
+    await Promise.all([
+      getAnalyticsDashboardSummary(),
+      getTopPerformingClips(10),
+      getAssetHealthReport(),
+      getStrategySummary().catch(() => ""),
+      generateTrendReport().catch(() => null),
+      analyzeCampaignPerformance().catch(() => []),
+    ]);
+
+  const trendContext = trendReport
+    ? `\nEntertainment trends this week: ${trendReport.entertainmentTrends.map((t) => t.keyword).join(", ")}
+OAE search interest: ${trendReport.oaeTitleInterest.map((t) => `${t.keyword}: ${t.interest}/100`).join(", ") || "No data"}
+Identified opportunities: ${trendReport.opportunities.join("; ") || "None"}
+Risks to watch: ${trendReport.risks.join("; ") || "None"}`
+    : "";
+
+  const insightsContext = campaignInsights.length > 0
+    ? `\nThis week's performance insights:\n${campaignInsights.map((i) => `- [${i.category}] ${i.content}`).join("\n")}`
+    : "";
 
   const prompt = `It's Sunday — time for the weekly strategy review.
 
 Dashboard: ${JSON.stringify(dashboardSummary, null, 2)}
 Top clips this week: ${JSON.stringify(topClips, null, 2)}
 Asset health: ${JSON.stringify(healthReport, null, 2)}
+${strategySummary ? `\nStrategy playbook:\n${strategySummary}` : ""}
+${trendContext}
+${insightsContext}
 
 Write a comprehensive weekly review covering:
-1. **Performance summary** — what worked, what didn't
+1. **Performance summary** — what worked, what didn't (reference specific insights)
 2. **Top content** — best performing posts and why
-3. **Audience insights** — any patterns in engagement
-4. **Recommendations** — what to focus on next week
-5. **Content gaps** — what we should create or schedule
+3. **Trend intelligence** — what's trending in entertainment and how we can capitalize
+4. **Audience insights** — any patterns in engagement, search interest, or click-throughs
+5. **Strategy experiments** — what we're testing, early results, what to try next
+6. **Recommendations** — what to focus on next week, any trend-riding opportunities
+7. **Content gaps** — what we should create or schedule
 
-This goes to the team as a proper strategy document. Be thorough but keep it readable.`;
+This goes to the team as a proper strategy document. Be thorough but keep it readable. Reference data when you have it.`;
+
+  // Run campaign analysis to generate lasting insights
+  await analyzeCampaignPerformance().catch(() => []);
 
   const result = await chatWithMorgan(convId, prompt);
 
