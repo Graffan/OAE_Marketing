@@ -121,9 +121,11 @@ export async function getOAETitleInterest(): Promise<TrendResult[]> {
 
 /**
  * Fetch a URL and extract readable content.
- * Uses Jina Reader API (free, no key needed) for clean markdown extraction.
+ * Tries Jina Reader first (clean markdown), falls back to direct fetch.
+ * No API keys needed — works out of the box.
  */
 export async function fetchWebContent(url: string): Promise<WebResearchResult> {
+  // Strategy 1: Jina Reader (best quality, free for reads)
   try {
     const jinaUrl = `https://r.jina.ai/${url}`;
     const response = await fetch(jinaUrl, {
@@ -131,7 +133,34 @@ export async function fetchWebContent(url: string): Promise<WebResearchResult> {
         Accept: "text/markdown",
         "X-Return-Format": "markdown",
       },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (response.ok) {
+      const text = await response.text();
+      if (text.length > 100) {
+        const titleMatch = text.match(/^#\s+(.+)$/m);
+        return {
+          url,
+          title: titleMatch?.[1] ?? url,
+          content: text.slice(0, 5000),
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    }
+  } catch {
+    // Jina failed, fall through to direct fetch
+  }
+
+  // Strategy 2: Direct fetch with HTML-to-text extraction
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; OAEMarketing/1.0)",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(12000),
+      redirect: "follow",
     });
 
     if (!response.ok) {
@@ -144,14 +173,30 @@ export async function fetchWebContent(url: string): Promise<WebResearchResult> {
       };
     }
 
-    const text = await response.text();
-    // Extract title from first markdown heading
-    const titleMatch = text.match(/^#\s+(.+)$/m);
+    const html = await response.text();
+
+    // Extract title
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    const title = titleMatch?.[1]?.trim() ?? url;
+
+    // Extract text content: strip tags, collapse whitespace
+    const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const bodyHtml = bodyMatch?.[1] ?? html;
+    const text = bodyHtml
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, "")
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, "")
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&[a-z]+;/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
     return {
       url,
-      title: titleMatch?.[1] ?? url,
-      content: text.slice(0, 5000), // cap at 5k chars to control token usage
+      title,
+      content: text.slice(0, 5000),
       fetchedAt: new Date().toISOString(),
     };
   } catch (err) {
@@ -166,37 +211,56 @@ export async function fetchWebContent(url: string): Promise<WebResearchResult> {
 }
 
 /**
- * Search the web and get summarized results.
- * Uses Jina Search API (free tier).
+ * Search the web using DuckDuckGo HTML results (free, no API key).
+ * Falls back gracefully if blocked.
  */
 export async function searchWeb(query: string, maxResults = 5): Promise<WebResearchResult[]> {
   try {
-    const response = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
+    // DuckDuckGo HTML lite — works without API key, returns real search results
+    const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+    const response = await fetch(ddgUrl, {
       headers: {
-        Accept: "application/json",
-        "X-Return-Format": "markdown",
+        "User-Agent": "Mozilla/5.0 (compatible; OAEMarketing/1.0)",
       },
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
-      console.error(`[Web Intelligence] Search failed: HTTP ${response.status}`);
+      console.error(`[Web Intelligence] DuckDuckGo search failed: HTTP ${response.status}`);
       return [];
     }
 
-    const text = await response.text();
+    const html = await response.text();
 
-    // Parse the markdown response into individual results
+    // Parse DuckDuckGo HTML results
     const results: WebResearchResult[] = [];
-    const sections = text.split(/\n---\n|\n#{1,2}\s/).filter(Boolean);
+    const resultPattern = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/g;
+    const snippetPattern = /<a[^>]*class="result__snippet"[^>]*>([^<]*(?:<[^>]*>[^<]*)*)<\/a>/g;
 
-    for (const section of sections.slice(0, maxResults)) {
-      const urlMatch = section.match(/https?:\/\/[^\s)]+/);
-      const titleMatch = section.match(/\[([^\]]+)\]/);
+    const urls: string[] = [];
+    const titles: string[] = [];
+    const snippets: string[] = [];
+
+    let match;
+    while ((match = resultPattern.exec(html)) !== null) {
+      // DuckDuckGo wraps URLs in a redirect — extract the actual URL
+      const rawUrl = match[1];
+      const actualUrl = rawUrl.includes("uddg=")
+        ? decodeURIComponent(rawUrl.split("uddg=")[1]?.split("&")[0] ?? rawUrl)
+        : rawUrl;
+      urls.push(actualUrl);
+      titles.push(match[2].replace(/<[^>]*>/g, "").trim());
+    }
+
+    while ((match = snippetPattern.exec(html)) !== null) {
+      snippets.push(match[1].replace(/<[^>]*>/g, "").trim());
+    }
+
+    for (let i = 0; i < Math.min(urls.length, maxResults); i++) {
       results.push({
-        url: urlMatch?.[0] ?? "",
-        title: titleMatch?.[1] ?? section.slice(0, 60).trim(),
-        content: section.slice(0, 2000),
+        url: urls[i],
+        title: titles[i] ?? "",
+        content: snippets[i] ?? "",
         fetchedAt: new Date().toISOString(),
       });
     }
