@@ -32,7 +32,9 @@ import {
   useScheduledPosts,
   useApprovePost,
   useCancelPost,
+  useUpdateScheduledPost,
 } from "@/hooks/useScheduledPosts";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Play,
   CheckCircle2,
@@ -189,6 +191,171 @@ function TaskHistoryTab() {
   );
 }
 
+// ─── Approval Card ──────────────────────────────────────────────────────────
+
+interface ApprovalCardProps {
+  post: any;
+  onApprove: () => void;
+  onReject: () => void;
+  approving: boolean;
+  rejecting: boolean;
+}
+
+function ApprovalCard({ post, onApprove, onReject, approving, rejecting }: ApprovalCardProps) {
+  const [editing, setEditing] = useState(false);
+  const [caption, setCaption] = useState(post.caption ?? "");
+  const [hashtags, setHashtags] = useState(post.hashtags ?? "");
+  const [scheduledTime, setScheduledTime] = useState(
+    post.scheduledAt ? new Date(post.scheduledAt).toISOString().slice(0, 16) : ""
+  );
+  const updatePost = useUpdateScheduledPost();
+
+  const PlatformIcon = PLATFORM_ICONS[post.platform] ?? Send;
+  const isDirty =
+    caption !== (post.caption ?? "") ||
+    hashtags !== (post.hashtags ?? "") ||
+    scheduledTime !== (post.scheduledAt ? new Date(post.scheduledAt).toISOString().slice(0, 16) : "");
+
+  function handleSave() {
+    updatePost.mutate(
+      {
+        id: post.id,
+        caption,
+        hashtags,
+        ...(scheduledTime ? { scheduledAt: new Date(scheduledTime).toISOString() } : {}),
+      },
+      { onSuccess: () => setEditing(false) }
+    );
+  }
+
+  function handleCancel() {
+    setCaption(post.caption ?? "");
+    setHashtags(post.hashtags ?? "");
+    setScheduledTime(post.scheduledAt ? new Date(post.scheduledAt).toISOString().slice(0, 16) : "");
+    setEditing(false);
+  }
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
+        <PlatformIcon className="h-4 w-4 text-violet-500 flex-shrink-0" />
+        <span className="text-xs font-medium capitalize text-muted-foreground">{post.platform}</span>
+        {post.titleName && (
+          <Badge className="text-[10px] bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+            {post.titleName}
+          </Badge>
+        )}
+        <span className="text-[10px] text-muted-foreground/60 ml-auto">
+          <Clock className="h-3 w-3 inline mr-1" />
+          {formatTime(post.scheduledAt)}
+        </span>
+      </div>
+
+      {/* Content */}
+      <div className="px-4 pb-3">
+        {editing ? (
+          <div className="space-y-3 mt-2">
+            <div>
+              <Label className="text-xs text-muted-foreground">Caption</Label>
+              <Textarea
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                rows={4}
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Hashtags</Label>
+              <Input
+                value={hashtags}
+                onChange={(e) => setHashtags(e.target.value)}
+                placeholder="#indie #film #horror"
+                className="mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <Label className="text-xs text-muted-foreground">Scheduled Time</Label>
+              <Input
+                type="datetime-local"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+                className="mt-1 text-sm"
+              />
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditing(true)}
+            className="w-full text-left group cursor-pointer"
+            title="Click to edit"
+          >
+            <p className="text-sm mt-1 group-hover:bg-muted/50 rounded-lg p-1.5 -m-1.5 transition-colors">
+              {post.caption?.slice(0, 200)}
+              {post.caption?.length > 200 && "..."}
+            </p>
+            {post.hashtags && (
+              <p className="text-xs text-blue-500 mt-1 group-hover:bg-muted/50 rounded-lg p-1.5 -m-1.5 transition-colors">
+                {post.hashtags}
+              </p>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-2 px-4 pb-4">
+        {editing ? (
+          <>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={!isDirty || updatePost.isPending}
+              className="text-xs"
+            >
+              {updatePost.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Save Changes
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleCancel} className="text-xs">
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              onClick={onApprove}
+              disabled={approving || rejecting}
+              className="text-xs bg-emerald-600 hover:bg-emerald-700"
+            >
+              {approving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <ThumbsUp className="h-3 w-3 mr-1" />}
+              Approve
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onReject}
+              disabled={approving || rejecting}
+              className="text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              {rejecting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Ban className="h-3 w-3 mr-1" />}
+              Reject
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setEditing(true)}
+              className="text-xs ml-auto"
+            >
+              Edit
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Approval Queue Tab ──────────────────────────────────────────────────────
 
 function ApprovalQueueTab() {
@@ -222,56 +389,16 @@ function ApprovalQueueTab() {
             <p className="text-sm text-muted-foreground">No drafts awaiting approval</p>
           </div>
         ) : (
-          queue.map((post: any) => {
-            const PIcon = PLATFORM_ICONS[post.platform] ?? Send;
-            return (
-              <div
-                key={post.id}
-                className="p-4 rounded-xl border border-border/50 bg-card space-y-3"
-              >
-                <div className="flex items-start gap-3">
-                  <PIcon className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="text-[10px] border-violet-300 text-violet-600 dark:text-violet-400">
-                        Morgan
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {post.scheduledAt ? `Scheduled: ${formatTime(post.scheduledAt)}` : "No schedule set"}
-                      </span>
-                    </div>
-                    <p className="text-sm leading-relaxed">{post.caption}</p>
-                    {post.hashtags && (post.hashtags as string[]).length > 0 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {(post.hashtags as string[]).map((t: string) => `#${t}`).join(" ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 pl-8">
-                  <Button
-                    size="sm"
-                    onClick={() => approvePost.mutate(post.id)}
-                    disabled={approvePost.isPending}
-                    className="text-xs"
-                  >
-                    <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => cancelPost.mutate(post.id)}
-                    disabled={cancelPost.isPending}
-                    className="text-xs"
-                  >
-                    <Ban className="h-3.5 w-3.5 mr-1.5" />
-                    Reject
-                  </Button>
-                </div>
-              </div>
-            );
-          })
+          queue.map((post: any) => (
+            <ApprovalCard
+              key={post.id}
+              post={post}
+              onApprove={() => approvePost.mutate(post.id)}
+              onReject={() => cancelPost.mutate(post.id)}
+              approving={approvePost.isPending}
+              rejecting={cancelPost.isPending}
+            />
+          ))
         )}
       </div>
 

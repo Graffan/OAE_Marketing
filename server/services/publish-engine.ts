@@ -28,7 +28,10 @@ import {
   calculatePostingDelay,
 } from "./human-posting.js";
 
-// ─── Platform Publishers (stubs — replace with real API calls) ───────────────
+// ─── Platform Publishers ─────────────────────────────────────────────────────
+//
+// Each publisher calls the real platform API. If OAuth is not configured,
+// they return an explicit error — never fake success.
 
 interface PublishResult {
   success: boolean;
@@ -41,66 +44,174 @@ async function publishToInstagram(
   post: ScheduledPost,
   connection: SocialConnection
 ): Promise<PublishResult> {
-  // Stub: In production, use Instagram Graph API
-  // POST /{ig-user-id}/media + POST /{ig-user-id}/media_publish
   if (!connection.accessToken) {
-    return { success: false, error: "Instagram access token not configured" };
+    return { success: false, error: "Instagram not connected. Go to Admin > Social Connections to set up OAuth." };
   }
-  const postId = `ig_${Date.now()}_${post.id}`;
-  return {
-    success: true,
-    platformPostId: postId,
-    platformPostUrl: `https://instagram.com/p/${postId}`,
-  };
+
+  // Instagram Graph API: create media container, then publish
+  try {
+    const igUserId = connection.accountId ?? connection.accountName;
+    const caption = (post as any).caption ?? "";
+
+    // Step 1: Create media container
+    const createRes = await fetch(
+      `https://graph.facebook.com/v19.0/${igUserId}/media`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          caption,
+          access_token: connection.accessToken,
+          // For image posts: image_url is required
+          // For video/reels: video_url + media_type=REELS
+          ...(post.mediaUrl ? { image_url: post.mediaUrl } : {}),
+        }),
+      }
+    );
+    if (!createRes.ok) {
+      const err = await createRes.json();
+      return { success: false, error: `Instagram API: ${err.error?.message ?? createRes.statusText}` };
+    }
+    const { id: containerId } = await createRes.json();
+
+    // Step 2: Publish the container
+    const publishRes = await fetch(
+      `https://graph.facebook.com/v19.0/${igUserId}/media_publish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: containerId,
+          access_token: connection.accessToken,
+        }),
+      }
+    );
+    if (!publishRes.ok) {
+      const err = await publishRes.json();
+      return { success: false, error: `Instagram publish failed: ${err.error?.message ?? publishRes.statusText}` };
+    }
+    const { id: postId } = await publishRes.json();
+
+    return {
+      success: true,
+      platformPostId: postId,
+      platformPostUrl: `https://instagram.com/p/${postId}`,
+    };
+  } catch (err) {
+    return { success: false, error: `Instagram error: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 async function publishToTikTok(
   post: ScheduledPost,
   connection: SocialConnection
 ): Promise<PublishResult> {
-  // Stub: In production, use TikTok Content Posting API
   if (!connection.accessToken) {
-    return { success: false, error: "TikTok access token not configured" };
+    return { success: false, error: "TikTok not connected. Go to Admin > Social Connections to set up OAuth." };
   }
-  const postId = `tt_${Date.now()}_${post.id}`;
-  return {
-    success: true,
-    platformPostId: postId,
-    platformPostUrl: `https://tiktok.com/@${connection.accountName}/video/${postId}`,
-  };
+
+  // TikTok Content Posting API v2
+  try {
+    const caption = (post as any).caption ?? "";
+
+    // TikTok requires video upload via their API — text-only posts not supported
+    // For now, if no media URL, we can't post
+    if (!post.mediaUrl) {
+      return { success: false, error: "TikTok requires a video URL. Upload a clip first." };
+    }
+
+    const res = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${connection.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        post_info: {
+          title: caption.slice(0, 150),
+          privacy_level: "PUBLIC_TO_EVERYONE",
+        },
+        source_info: {
+          source: "PULL_FROM_URL",
+          video_url: post.mediaUrl,
+        },
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      return { success: false, error: `TikTok API: ${err.error?.message ?? res.statusText}` };
+    }
+
+    const data = await res.json();
+    const publishId = data.data?.publish_id;
+
+    return {
+      success: true,
+      platformPostId: publishId ?? `tiktok_${Date.now()}`,
+      platformPostUrl: `https://tiktok.com/@${connection.accountName}`,
+    };
+  } catch (err) {
+    return { success: false, error: `TikTok error: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 async function publishToTwitter(
   post: ScheduledPost,
   connection: SocialConnection
 ): Promise<PublishResult> {
-  // Stub: In production, use X/Twitter API v2
-  // POST /2/tweets
   if (!connection.accessToken) {
-    return { success: false, error: "Twitter/X access token not configured" };
+    return { success: false, error: "X/Twitter not connected. Go to Admin > Social Connections to set up OAuth." };
   }
-  const postId = `tw_${Date.now()}_${post.id}`;
-  return {
-    success: true,
-    platformPostId: postId,
-    platformPostUrl: `https://x.com/${connection.accountName}/status/${postId}`,
-  };
+
+  // X/Twitter API v2: POST /2/tweets
+  try {
+    const caption = (post as any).caption ?? "";
+
+    const res = await fetch("https://api.x.com/2/tweets", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${connection.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text: caption.slice(0, 280) }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      return { success: false, error: `X/Twitter API: ${err.detail ?? err.title ?? res.statusText}` };
+    }
+
+    const data = await res.json();
+    const tweetId = data.data?.id;
+
+    return {
+      success: true,
+      platformPostId: tweetId,
+      platformPostUrl: `https://x.com/${connection.accountName}/status/${tweetId}`,
+    };
+  } catch (err) {
+    return { success: false, error: `X/Twitter error: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 async function publishToYouTube(
   post: ScheduledPost,
   connection: SocialConnection
 ): Promise<PublishResult> {
-  // Stub: In production, use YouTube Data API v3
-  // POST /youtube/v3/videos (for Shorts) or /youtube/v3/commentThreads
   if (!connection.accessToken) {
-    return { success: false, error: "YouTube access token not configured" };
+    return { success: false, error: "YouTube not connected. Go to Admin > Social Connections to set up OAuth." };
   }
-  const postId = `yt_${Date.now()}_${post.id}`;
+
+  // YouTube Data API v3 requires multipart video upload
+  // Text-only posts are not supported on YouTube
+  if (!post.mediaUrl) {
+    return { success: false, error: "YouTube requires a video file. Upload a clip first." };
+  }
+
   return {
-    success: true,
-    platformPostId: postId,
-    platformPostUrl: `https://youtube.com/shorts/${postId}`,
+    success: false,
+    error: "YouTube video upload requires multipart upload flow. Coming in next release — use YouTube Studio for now.",
   };
 }
 

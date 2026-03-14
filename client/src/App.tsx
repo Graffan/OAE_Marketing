@@ -21,10 +21,12 @@ import SchedulePage from "@/pages/SchedulePage";
 import CalendarPage from "@/pages/CalendarPage";
 import MorganPage from "@/pages/MorganPage";
 import MorganStatusPage from "@/pages/MorganStatusPage";
+import MorganInsightsPage from "@/pages/MorganInsightsPage";
 import BrandHubPage from "@/pages/BrandHubPage";
 import LinkAnalyticsPage from "@/pages/LinkAnalyticsPage";
 import AudiencePage from "@/pages/AudiencePage";
 import EmailPage from "@/pages/EmailPage";
+import HelpPage from "@/pages/HelpPage";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -39,11 +41,13 @@ import {
   Send,
   BrainCircuit,
   Activity,
+  Lightbulb,
   Palette,
   MousePointerClick,
   UsersRound,
   Mail,
   Settings,
+  HelpCircle,
   LogOut,
   Sun,
   Moon,
@@ -101,6 +105,7 @@ function Sidebar() {
       items: [
         { href: "/morgan",       label: "Chat",         icon: BrainCircuit,    roles: null },
         { href: "/morgan/status", label: "Ops & Queue",  icon: Activity,        roles: OPERATOR_AND_ABOVE },
+        { href: "/morgan/insights", label: "Insights",   icon: Lightbulb,       roles: OPERATOR_AND_ABOVE },
       ],
     },
     {
@@ -134,6 +139,7 @@ function Sidebar() {
     {
       label: "",
       items: [
+        { href: "/help",         label: "Help",         icon: HelpCircle,      roles: null },
         { href: "/admin",        label: "Admin",        icon: Settings,        roles: ADMIN_ONLY },
       ],
     },
@@ -288,13 +294,15 @@ export default function App() {
             <Route path="/ai-studio"    component={AiStudioPage} />
             <Route path="/schedule"     component={SchedulePage} />
             <Route path="/calendar"     component={CalendarPage} />
-            <Route path="/morgan/status" component={MorganStatusPage} />
-            <Route path="/morgan"       component={MorganPage} />
+            <Route path="/morgan/status"   component={MorganStatusPage} />
+            <Route path="/morgan/insights" component={MorganInsightsPage} />
+            <Route path="/morgan"          component={MorganPage} />
             <Route path="/brand"          component={BrandHubPage} />
             <Route path="/link-analytics" component={LinkAnalyticsPage} />
             <Route path="/audience"       component={AudiencePage} />
             <Route path="/email"          component={EmailPage} />
             <Route path="/analytics"    component={AnalyticsPage} />
+            <Route path="/help"         component={HelpPage} />
             <Route path="/admin"        component={AdminPage} />
             <Route>
               <div className="flex h-screen items-center justify-center">

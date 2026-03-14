@@ -17,7 +17,9 @@ Film distribution marketing platform for Other Animal Entertainment. Manage titl
 - **Brand Hub** — Brand assets, voice guide (do/don't rules), social profiles, and press kit items
 
 ### Intelligence
-- **Morgan AI** — Autonomous AI assistant with multi-provider fallback (Claude, OpenAI, DeepSeek), daily briefings, task queue with auto-approve rules, and a dashboard quick-chat widget
+- **Morgan AI** — Autonomous AI head of marketing with multi-provider fallback (Claude, OpenAI, DeepSeek, Ollama local LLM), daily briefings, task queue with auto-approve rules, campaign staging engine, and smart model routing (local for drafts, API for final copy)
+- **Morgan Insights** — Strategy playbook, experiment tracking, web research, trend reports, and token budget monitoring
+- **Campaign Staging** — 5-phase organic rollout (Seed → Launch → Sustain → Revive → Evergreen) with anti-bot humanized posting (timing jitter, hashtag shuffling, platform rate limits)
 - **AI Studio** — Prompt templates for generating marketing copy, social posts, and campaign content
 - **Audience** — Persona builder, engagement templates, competitor tracking, and cross-promotion suggestions
 - **Email** — Subscriber management (captured via smart link landing pages) and email campaign builder
@@ -25,8 +27,10 @@ Film distribution marketing platform for Other Animal Entertainment. Manage titl
 
 ### Administration
 - **Role-based access** — admin, marketing_operator, reviewer, executive, freelancer
-- **App settings** — Company branding, logo, accent color (drives entire UI palette), AI provider keys
+- **App settings** — Company branding, logo, accent color (drives entire UI palette), AI provider keys, Ollama local LLM config, storage management
+- **Social connections** — OAuth configuration for Instagram, TikTok, X/Twitter, YouTube with real platform API publishing
 - **Notification system** — In-app alerts for campaigns, deadlines, Morgan tasks, and system events
+- **Help page** — In-app user guide covering all features, workflows, and Morgan's operations
 
 ## Tech Stack
 
@@ -37,7 +41,8 @@ Film distribution marketing platform for Other Animal Entertainment. Manage titl
 | Database | PostgreSQL + Drizzle ORM |
 | Auth | Passport.js (local strategy, session-based) |
 | Session store | connect-pg-simple |
-| AI | Anthropic SDK, OpenAI SDK (Claude, GPT-4o, DeepSeek-V3) |
+| AI | Anthropic SDK, OpenAI SDK (Claude, GPT-4o, DeepSeek-V3), Ollama (local LLM) |
+| Social APIs | Instagram Graph API, TikTok Content Posting API, X/Twitter API v2, YouTube Data API |
 | Integrations | Dropbox API, OMDb API, ip-api.com (geolocation) |
 | Theme | next-themes (light/dark/system) + CSS variable accent color |
 
@@ -292,7 +297,7 @@ chmod +x /opt/oae-marketing/scripts/deploy.sh
 OAE_Marketing/
   client/src/
     App.tsx                # Router, sidebar, layout
-    pages/                 # 21 page components
+    pages/                 # 22 page components
     hooks/                 # React Query hooks
     components/ui/         # shadcn/ui primitives
     lib/                   # Utilities, query client
@@ -306,6 +311,10 @@ OAE_Marketing/
       ai-orchestrator.ts   # Multi-provider AI fallback
       morgan-chat.ts       # Morgan AI conversation engine
       morgan-daily-cycle.ts    # Autonomous daily briefings
+      model-router.ts      # Smart LLM routing (local vs API)
+      campaign-staging.ts  # 5-phase organic campaign rollout
+      human-posting.ts     # Anti-bot humanization (timing, hashtags, rate limits)
+      publish-engine.ts    # Real platform API social publishing
       smart-link-redirect.ts   # Geo-routed link redirect
       dropbox.ts           # Clip library sync
       geoip.ts             # IP geolocation

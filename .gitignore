@@ -4,3 +4,5 @@ dist/
 *.local
 drizzle/
 .DS_Store
+data/
+uploads/

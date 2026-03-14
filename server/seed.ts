@@ -123,8 +123,7 @@ async function seed() {
       .returning();
 
     console.log(`Admin user created: ${user.username} (id: ${user.id})`);
-    console.log(`Login: ${DEFAULT_USERNAME} / ${DEFAULT_PASSWORD}`);
-    console.log("Change the password after first login!");
+    console.log("Change the default password after first login!");
   }
 
   // Owner accounts
@@ -153,7 +152,7 @@ async function seed() {
         role: "admin",
         isActive: true,
       });
-      console.log(`Owner account created: ${owner.username} (password: oaeowner2024)`);
+      console.log(`Owner account created: ${owner.username}`);
     }
   }
 
