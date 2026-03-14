@@ -75,6 +75,11 @@ export const appSettings = pgTable("app_settings", {
   smtpFromEmail: text("smtp_from_email"),
   smtpFromName: text("smtp_from_name"),
   smtpTls: boolean("smtp_tls").default(true),
+  // Storage — external drive paths for Proxmox CT deployments
+  storageClipsPath: text("storage_clips_path").default("./uploads/clips"),
+  storageExportsPath: text("storage_exports_path").default("./uploads/exports"),
+  storageModelsPath: text("storage_models_path").default(""),
+  storageMaxSizeGb: integer("storage_max_size_gb").default(50),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 

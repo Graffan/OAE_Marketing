@@ -10,6 +10,7 @@ import {
 } from "../storage.js";
 import type { MorganMessage, AppSettings } from "@shared/schema.js";
 import { getStrategySummary, getRecentInsights } from "./morgan-insights.js";
+import { routeTask, recordTokenUsage, formatRouteExplanation, getTokenBudget } from "./model-router.js";
 
 // ─── Morgan's System Prompt ──────────────────────────────────────────────────
 
@@ -170,15 +171,23 @@ export interface MorganChatResult {
   inputTokens: number;
   outputTokens: number;
   latencyMs: number;
+  routeExplanation?: string;
 }
 
 export async function chatWithMorgan(
   conversationId: number,
   userMessage: string,
-  userId?: number
+  userId?: number,
+  options: { forceApi?: boolean; forceLocal?: boolean } = {}
 ): Promise<MorganChatResult> {
   const settings = await getFullAppSettings();
   if (!settings) throw new Error("App settings not configured");
+
+  // Smart routing — determine which model should handle this
+  const route = await routeTask("morgan_chat", {
+    forceApi: options.forceApi,
+    forceLocal: options.forceLocal,
+  });
 
   const memoryContext = await buildMorganContext(conversationId);
   const messages = await getMorganMessages(conversationId, 50);
@@ -187,11 +196,10 @@ export async function chatWithMorgan(
   const fullSystemPrompt = MORGAN_SYSTEM_PROMPT + memoryContext;
   const start = Date.now();
 
-  // Try providers in order: primary → fallback
-  const providers = [
-    settings.aiPrimaryProvider ?? "claude",
-    ...((settings.aiFallbackOrder as string[] | null) ?? ["openai", "deepseek"]),
-  ];
+  // Build provider order: routed provider first, then fallbacks
+  const routedProvider = route.suggestedProvider;
+  const fallbacks = (settings.aiFallbackOrder as string[] | null) ?? ["openai", "deepseek"];
+  const providers = [routedProvider, ...fallbacks.filter((p) => p !== routedProvider)];
 
   let lastError: Error | null = null;
 
@@ -206,6 +214,9 @@ export async function chatWithMorgan(
       );
 
       const latencyMs = Date.now() - start;
+
+      // Track token usage for budget monitoring
+      recordTokenUsage(provider, result.inputTokens + result.outputTokens);
 
       // Log the AI call
       await createAiLog({
@@ -232,6 +243,7 @@ export async function chatWithMorgan(
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
         latencyMs,
+        routeExplanation: formatRouteExplanation(route),
       };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));

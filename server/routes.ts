@@ -2076,8 +2076,16 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
         userId,
       });
 
-      // Get Morgan's response
-      const result = await chatWithMorgan(conversationId, `${userName}: ${message.trim()}`, userId);
+      // Get Morgan's response (supports "use api" or "use local" overrides)
+      const msgLower = message.trim().toLowerCase();
+      const forceApi = msgLower.includes("use api") || msgLower.includes("premium quality");
+      const forceLocal = msgLower.includes("use local") || msgLower.includes("use ollama");
+      const result = await chatWithMorgan(
+        conversationId,
+        `${userName}: ${message.trim()}`,
+        userId,
+        { forceApi, forceLocal }
+      );
 
       // Store Morgan's response
       const morganMsg = await createMorganMessage({
@@ -2355,6 +2363,158 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
       }
       const result = await fetchWebContent(url);
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Storage Management ────────────────────────────────────────────────────
+
+  app.get("/api/admin/storage", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const settings = await getFullAppSettings();
+      if (!settings) return res.status(500).json({ message: "Settings not found" });
+
+      const { execSync } = await import("child_process");
+      const paths = {
+        clips: (settings as any).storageClipsPath || "./uploads/clips",
+        exports: (settings as any).storageExportsPath || "./uploads/exports",
+        models: (settings as any).storageModelsPath || "",
+      };
+
+      // Check disk usage for each path
+      const usage: Record<string, { path: string; exists: boolean; sizeMb: number; freeGb: number }> = {};
+      for (const [key, path] of Object.entries(paths)) {
+        if (!path) {
+          usage[key] = { path: "", exists: false, sizeMb: 0, freeGb: 0 };
+          continue;
+        }
+        try {
+          const { statSync } = await import("fs");
+          const exists = (() => { try { statSync(path); return true; } catch { return false; } })();
+          let sizeMb = 0;
+          let freeGb = 0;
+          if (exists) {
+            try {
+              const duOutput = execSync(`du -sm "${path}" 2>/dev/null || echo "0"`, { encoding: "utf-8" });
+              sizeMb = parseInt(duOutput.split("\t")[0] ?? "0", 10);
+            } catch { /* ignore */ }
+            try {
+              const dfOutput = execSync(`df -BG "${path}" 2>/dev/null | tail -1`, { encoding: "utf-8" });
+              const parts = dfOutput.trim().split(/\s+/);
+              freeGb = parseInt(parts[3]?.replace("G", "") ?? "0", 10);
+            } catch { /* ignore */ }
+          }
+          usage[key] = { path, exists, sizeMb, freeGb };
+        } catch {
+          usage[key] = { path, exists: false, sizeMb: 0, freeGb: 0 };
+        }
+      }
+
+      // Ollama models size
+      let ollamaModelsGb = 0;
+      try {
+        const output = execSync("du -sg ~/.ollama/models 2>/dev/null || echo '0'", { encoding: "utf-8" });
+        ollamaModelsGb = parseInt(output.split("\t")[0] ?? "0", 10);
+      } catch { /* ignore */ }
+
+      res.json({
+        paths,
+        usage,
+        ollamaModelsGb,
+        maxSizeGb: (settings as any).storageMaxSizeGb ?? 50,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.put("/api/admin/storage", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { storageClipsPath, storageExportsPath, storageModelsPath, storageMaxSizeGb } = req.body;
+      const updates: Record<string, unknown> = {};
+      if (storageClipsPath !== undefined) updates.storageClipsPath = storageClipsPath;
+      if (storageExportsPath !== undefined) updates.storageExportsPath = storageExportsPath;
+      if (storageModelsPath !== undefined) updates.storageModelsPath = storageModelsPath;
+      if (storageMaxSizeGb !== undefined) updates.storageMaxSizeGb = Number(storageMaxSizeGb);
+
+      await updateAppSettings(updates);
+
+      // Create directories if they don't exist
+      const { mkdirSync } = await import("fs");
+      for (const path of [storageClipsPath, storageExportsPath, storageModelsPath]) {
+        if (path) {
+          try { mkdirSync(path, { recursive: true }); } catch { /* ignore */ }
+        }
+      }
+
+      res.json({ message: "Storage settings updated" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Campaign Staging ──────────────────────────────────────────────────────
+
+  app.post("/api/morgan/campaign-stage", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { buildCampaignStage } = await import("./services/campaign-staging.js");
+      const { titleName, platforms, totalDays } = req.body;
+      if (!titleName) {
+        return res.status(400).json({ message: "titleName is required" });
+      }
+      const stage = buildCampaignStage(
+        titleName,
+        platforms ?? ["instagram", "tiktok", "twitter"],
+        totalDays ?? 30
+      );
+      res.json(stage);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/campaign-phase", requireAuth, async (req, res) => {
+    try {
+      const { getCurrentPhase } = await import("./services/campaign-staging.js");
+      const { startDate } = req.body;
+      if (!startDate) {
+        return res.status(400).json({ message: "startDate is required (ISO string)" });
+      }
+      const phase = getCurrentPhase(new Date(startDate));
+      res.json(phase);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ─── Smart Model Router ────────────────────────────────────────────────────
+
+  app.get("/api/morgan/model-recommendations", requireAuth, async (req, res) => {
+    try {
+      const { RECOMMENDED_MODELS } = await import("./services/model-router.js");
+      res.json({ models: RECOMMENDED_MODELS });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/token-budget", requireAuth, async (req, res) => {
+    try {
+      const { getTokenBudget } = await import("./services/model-router.js");
+      const budget = await getTokenBudget();
+      res.json(budget);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/morgan/route-task", requireAuth, async (req, res) => {
+    try {
+      const { routeTask, formatRouteExplanation } = await import("./services/model-router.js");
+      const { taskName, forceApi, forceLocal, qualityOverride } = req.body;
+      const route = await routeTask(taskName ?? "morgan_chat", { forceApi, forceLocal, qualityOverride });
+      res.json({ ...route, explanation: formatRouteExplanation(route) });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

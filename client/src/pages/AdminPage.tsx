@@ -95,6 +95,12 @@ export default function AdminPage() {
           >
             Social Connections
           </TabsTrigger>
+          <TabsTrigger
+            value="storage"
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent py-3 px-4"
+          >
+            Storage
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="users" className="flex-1 overflow-auto p-8">
           <UsersTab />
@@ -116,6 +122,9 @@ export default function AdminPage() {
         </TabsContent>
         <TabsContent value="social" className="flex-1 overflow-auto p-8">
           <SocialConnectionsTab />
+        </TabsContent>
+        <TabsContent value="storage" className="flex-1 overflow-auto p-8">
+          <StorageTab />
         </TabsContent>
       </Tabs>
     </div>
@@ -1768,6 +1777,167 @@ function SocialConnectionsTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ─── Storage Tab ──────────────────────────────────────────────────────────────
+
+function StorageTab() {
+  const qc = useQueryClient();
+  const { data: storage, isLoading } = useQuery({
+    queryKey: ["/api/admin/storage"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/storage");
+      return res.json();
+    },
+  });
+
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (storage && Object.keys(form).length === 0) {
+      setForm({
+        storageClipsPath: storage.paths?.clips ?? "./uploads/clips",
+        storageExportsPath: storage.paths?.exports ?? "./uploads/exports",
+        storageModelsPath: storage.paths?.models ?? "",
+        storageMaxSizeGb: String(storage.maxSizeGb ?? 50),
+      });
+    }
+  }, [storage]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/admin/storage", {
+        ...form,
+        storageMaxSizeGb: Number(form.storageMaxSizeGb),
+      });
+      if (!res.ok) {
+        const b = await res.json();
+        throw new Error(b.message);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/storage"] });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    },
+  });
+
+  if (isLoading) return <div className="text-muted-foreground">Loading storage info...</div>;
+
+  const u = storage?.usage ?? {};
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <div>
+        <h2 className="text-lg font-semibold">Storage Configuration</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configure storage paths for clips, exports, and AI models. On Proxmox, mount an
+          external drive and point these paths to it.
+        </p>
+      </div>
+
+      {/* Current Usage */}
+      <div className="rounded-lg border p-4 space-y-3">
+        <h3 className="text-sm font-semibold">Current Disk Usage</h3>
+        <div className="grid grid-cols-3 gap-4 text-sm">
+          {Object.entries(u).map(([key, info]: [string, any]) => (
+            <div key={key} className="space-y-1">
+              <div className="font-medium capitalize">{key}</div>
+              <div className="text-muted-foreground">
+                {info.exists ? `${info.sizeMb} MB used` : "Not found"}
+              </div>
+              {info.freeGb > 0 && (
+                <div className="text-muted-foreground">{info.freeGb} GB free</div>
+              )}
+            </div>
+          ))}
+        </div>
+        {storage?.ollamaModelsGb > 0 && (
+          <div className="text-sm text-muted-foreground pt-2 border-t">
+            Ollama models: ~{storage.ollamaModelsGb} GB
+          </div>
+        )}
+      </div>
+
+      {/* Path Configuration */}
+      <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="storage-clips">Clips Storage Path</Label>
+          <Input
+            id="storage-clips"
+            value={form.storageClipsPath ?? ""}
+            onChange={(e) => setForm({ ...form, storageClipsPath: e.target.value })}
+            placeholder="./uploads/clips"
+          />
+          <p className="text-xs text-muted-foreground">
+            Where video clips are stored. On Proxmox: /mnt/external/oae/clips
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="storage-exports">Exports Storage Path</Label>
+          <Input
+            id="storage-exports"
+            value={form.storageExportsPath ?? ""}
+            onChange={(e) => setForm({ ...form, storageExportsPath: e.target.value })}
+            placeholder="./uploads/exports"
+          />
+          <p className="text-xs text-muted-foreground">
+            PDF reports, CSV exports. On Proxmox: /mnt/external/oae/exports
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="storage-models">AI Models Path (optional)</Label>
+          <Input
+            id="storage-models"
+            value={form.storageModelsPath ?? ""}
+            onChange={(e) => setForm({ ...form, storageModelsPath: e.target.value })}
+            placeholder="/mnt/external/ollama-models"
+          />
+          <p className="text-xs text-muted-foreground">
+            Override Ollama model storage location. Set OLLAMA_MODELS env var to this path.
+            Useful when CT disk is small but external drive has space.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="storage-max">Max Storage (GB)</Label>
+          <Input
+            id="storage-max"
+            type="number"
+            value={form.storageMaxSizeGb ?? "50"}
+            onChange={(e) => setForm({ ...form, storageMaxSizeGb: e.target.value })}
+            className="w-32"
+          />
+          <p className="text-xs text-muted-foreground">
+            Alert when total storage exceeds this limit.
+          </p>
+        </div>
+      </div>
+
+      {/* Proxmox Mount Guide */}
+      <div className="rounded-lg border p-4 space-y-2">
+        <h3 className="text-sm font-semibold">Proxmox External Drive Setup</h3>
+        <div className="text-xs text-muted-foreground space-y-1 font-mono">
+          <p># 1. Add disk to Proxmox host (Storage &gt; Add &gt; Directory)</p>
+          <p># 2. Mount into CT via config:</p>
+          <p>mp0: /mnt/external/oae,mp=/mnt/oae</p>
+          <p># 3. Set paths above to /mnt/oae/clips, /mnt/oae/exports</p>
+          <p># 4. For Ollama models, set OLLAMA_MODELS=/mnt/oae/models</p>
+        </div>
+      </div>
+
+      <Button
+        onClick={() => saveMutation.mutate()}
+        disabled={saveMutation.isPending}
+      >
+        {saveMutation.isPending ? "Saving..." : saved ? "Saved" : "Save Storage Settings"}
+      </Button>
     </div>
   );
 }
