@@ -21,6 +21,12 @@ import {
   getUsers,
 } from "../storage.js";
 import type { ScheduledPost, SocialConnection } from "../../shared/schema.js";
+import {
+  humanizePost,
+  checkRateLimit,
+  recordPost,
+  calculatePostingDelay,
+} from "./human-posting.js";
 
 // ─── Platform Publishers (stubs — replace with real API calls) ───────────────
 
@@ -111,6 +117,19 @@ const PLATFORM_PUBLISHERS: Record<
 // ─── Main Engine ─────────────────────────────────────────────────────────────
 
 async function publishSinglePost(post: ScheduledPost): Promise<void> {
+  // 1. Rate limit check — don't blast posts
+  const rateCheck = checkRateLimit(post.platform);
+  if (!rateCheck.canPost) {
+    console.log(`[Publish Engine] Rate limited on ${post.platform}: ${rateCheck.reason}`);
+    // Don't fail — just skip this cycle, it'll retry next minute
+    return;
+  }
+
+  // 2. Human-like delay — don't post exactly on the minute
+  const delay = calculatePostingDelay();
+  console.log(`[Publish Engine] Humanized delay: ${Math.round(delay / 1000)}s for post ${post.id}`);
+  await new Promise((r) => setTimeout(r, delay));
+
   // Mark as publishing
   await updateScheduledPost(post.id, { status: "publishing" } as any);
 
@@ -141,6 +160,8 @@ async function publishSinglePost(post: ScheduledPost): Promise<void> {
 
     if (result.success && result.platformPostId && result.platformPostUrl) {
       await markPostPublished(post.id, result.platformPostId, result.platformPostUrl);
+      // 3. Record for rate limiting
+      recordPost(post.platform);
     } else {
       await markPostFailed(post.id, result.error ?? "Unknown publishing error");
     }

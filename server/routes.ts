@@ -2360,6 +2360,42 @@ Please provide: (1) What worked this week, (2) What failed or underperformed, (3
     }
   });
 
+  // ─── Human-Like Posting ────────────────────────────────────────────────────
+
+  app.post("/api/morgan/humanize-post", requireAuth, requireOperator, async (req, res) => {
+    try {
+      const { humanizePost, buildHashtagSet, generateCaptionVariations, getBestPostingWindow } =
+        await import("./services/human-posting.js");
+      const { caption, hashtags = [], platform = "instagram", genres = [] } = req.body;
+      if (!caption) {
+        return res.status(400).json({ message: "caption is required" });
+      }
+
+      // Build hashtags from genres if none provided
+      const finalHashtags = hashtags.length > 0
+        ? hashtags
+        : buildHashtagSet(genres, platform);
+
+      const humanized = humanizePost(caption, finalHashtags, platform);
+      const variations = generateCaptionVariations(caption, 3);
+      const timing = getBestPostingWindow(platform);
+
+      res.json({ humanized, variations, timing });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/morgan/posting-windows/:platform", requireAuth, async (req, res) => {
+    try {
+      const { getBestPostingWindow } = await import("./services/human-posting.js");
+      const windows = getBestPostingWindow(req.params.platform);
+      res.json(windows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // ─── Phase 10: Smart Link Redirect ──────────────────────────────────────────
 
   app.get("/w/:slug", async (req, res) => {

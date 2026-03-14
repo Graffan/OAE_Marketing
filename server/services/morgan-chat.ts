@@ -250,6 +250,40 @@ interface ProviderResult {
   outputTokens: number;
 }
 
+async function callOllama(
+  settings: AppSettings,
+  systemPrompt: string,
+  history: Array<{ role: "user" | "assistant"; content: string }>,
+  userMessage: string
+): Promise<ProviderResult> {
+  const baseURL = settings.ollamaUrl ?? "http://localhost:11434";
+  const model = settings.ollamaModel ?? "llama3.1:8b";
+
+  const client = new OpenAI({
+    apiKey: "ollama",
+    baseURL: `${baseURL}/v1`,
+  });
+
+  const messages = [
+    { role: "system" as const, content: systemPrompt },
+    ...history,
+    { role: "user" as const, content: userMessage },
+  ];
+
+  const response = await client.chat.completions.create({
+    model,
+    max_tokens: 2048,
+    messages,
+  });
+
+  return {
+    content: response.choices[0]?.message?.content ?? "",
+    model,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  };
+}
+
 async function callProvider(
   provider: string,
   settings: AppSettings,
@@ -263,6 +297,8 @@ async function callProvider(
     case "openai":
     case "deepseek":
       return callOpenAICompat(provider, settings, systemPrompt, history, userMessage);
+    case "ollama":
+      return callOllama(settings, systemPrompt, history, userMessage);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }

@@ -156,6 +156,35 @@ async function callDeepSeekProvider(
   };
 }
 
+async function callOllamaProvider(
+  settings: AppSettings,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<ProviderResult> {
+  const baseURL = settings.ollamaUrl ?? "http://localhost:11434";
+  const model = settings.ollamaModel ?? "llama3.1:8b";
+
+  // Ollama exposes an OpenAI-compatible API at /v1
+  const client = new OpenAI({
+    apiKey: "ollama", // required by SDK but ignored by Ollama
+    baseURL: `${baseURL}/v1`,
+  });
+  const response = await client.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: systemPrompt + JSON_SYSTEM_SUFFIX },
+      { role: "user", content: userPrompt },
+    ],
+  });
+  const content = response.choices[0]?.message?.content ?? "";
+  return {
+    content,
+    model,
+    inputTokens: response.usage?.prompt_tokens ?? 0,
+    outputTokens: response.usage?.completion_tokens ?? 0,
+  };
+}
+
 async function callProvider(
   provider: string,
   settings: AppSettings,
@@ -169,6 +198,8 @@ async function callProvider(
       return callOpenAIProvider(settings, systemPrompt, userPrompt);
     case "deepseek":
       return callDeepSeekProvider(settings, systemPrompt, userPrompt);
+    case "ollama":
+      return callOllamaProvider(settings, systemPrompt, userPrompt);
     default:
       throw new Error(`Unknown provider: ${provider}`);
   }

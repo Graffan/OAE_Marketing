@@ -806,6 +806,8 @@ function AIProvidersTab() {
         openaiModel: s.openaiModel ?? "gpt-4o",
         deepseekApiKey: "",
         deepseekModel: s.deepseekModel ?? "deepseek-chat",
+        ollamaUrl: s.ollamaUrl ?? "http://localhost:11434",
+        ollamaModel: s.ollamaModel ?? "llama3.1:8b",
         aiPrimaryProvider: s.aiPrimaryProvider ?? "claude",
         aiFallbackOrder: (s.aiFallbackOrder ?? ["openai", "deepseek"]) as string[],
         aiDailyTokenCap: s.aiDailyTokenCap ?? 100000,
@@ -825,6 +827,8 @@ function AIProvidersTab() {
       if (data.openaiModel) toSend.openaiModel = data.openaiModel;
       if (data.deepseekApiKey) toSend.deepseekApiKey = data.deepseekApiKey;
       if (data.deepseekModel) toSend.deepseekModel = data.deepseekModel;
+      if (data.ollamaUrl) toSend.ollamaUrl = data.ollamaUrl;
+      if (data.ollamaModel) toSend.ollamaModel = data.ollamaModel;
       if (data.aiPrimaryProvider) toSend.aiPrimaryProvider = data.aiPrimaryProvider;
       if (data.aiFallbackOrder) toSend.aiFallbackOrder = data.aiFallbackOrder;
       if (data.aiDailyTokenCap !== undefined) toSend.aiDailyTokenCap = Number(data.aiDailyTokenCap);
@@ -969,6 +973,36 @@ function AIProvidersTab() {
         </div>
       </div>
 
+      {/* Ollama (Local) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold">Ollama (Local — Free)</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Runs AI locally on this machine. No API keys, no token costs. Install at ollama.com.
+        </p>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-ollama-url">Server URL</Label>
+            <Input
+              id="ai-ollama-url"
+              value={form.ollamaUrl}
+              onChange={(e) => setForm((f: any) => ({ ...f, ollamaUrl: e.target.value }))}
+              placeholder="http://localhost:11434"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ai-ollama-model">Model</Label>
+            <Input
+              id="ai-ollama-model"
+              value={form.ollamaModel}
+              onChange={(e) => setForm((f: any) => ({ ...f, ollamaModel: e.target.value }))}
+              placeholder="llama3.1:8b"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Primary Provider */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold">Primary Provider</h3>
@@ -985,6 +1019,7 @@ function AIProvidersTab() {
               <SelectItem value="claude">Claude</SelectItem>
               <SelectItem value="openai">OpenAI</SelectItem>
               <SelectItem value="deepseek">DeepSeek</SelectItem>
+              <SelectItem value="ollama">Ollama (Local)</SelectItem>
             </SelectContent>
           </Select>
         </div>

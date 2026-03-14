@@ -62,6 +62,8 @@ export const appSettings = pgTable("app_settings", {
   openaiModel: text("openai_model").default("gpt-4o"),
   deepseekApiKey: text("deepseek_api_key"),
   deepseekModel: text("deepseek_model").default("deepseek-chat"),
+  ollamaUrl: text("ollama_url").default("http://localhost:11434"),
+  ollamaModel: text("ollama_model").default("llama3.1:8b"),
   aiPrimaryProvider: text("ai_primary_provider").default("claude"),
   aiFallbackOrder: json("ai_fallback_order").$type<string[]>().default(["openai", "deepseek"]),
   aiDailyTokenCap: integer("ai_daily_token_cap").default(100000),
