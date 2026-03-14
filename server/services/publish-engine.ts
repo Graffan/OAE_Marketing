@@ -5,10 +5,9 @@
  * status=scheduled and scheduledAt <= now, transitions them through
  * publishing → published (or → failed).
  *
- * Platform API integration is stubbed — posts are marked as published
- * with a placeholder URL. When real OAuth tokens are available per
- * social connection, the platform-specific publish functions will
- * make real API calls.
+ * Each platform publisher calls the real API (Instagram Graph API,
+ * TikTok Content Posting API v2, X/Twitter API v2). If OAuth is not
+ * configured for a connection, the publisher returns an explicit error.
  */
 
 import {

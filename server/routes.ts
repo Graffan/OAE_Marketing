@@ -823,6 +823,7 @@ export async function registerRoutes(app: Express): Promise<http.Server> {
     "deepseekApiKey", "deepseekModel",
     "aiPrimaryProvider", "aiFallbackOrder",
     "aiDailyTokenCap", "aiPerUserCap",
+    "ollamaUrl", "ollamaModel",
     "smtpHost", "smtpPort", "smtpUser", "smtpPassword",
     "smtpFromEmail", "smtpFromName", "smtpTls",
   ]);

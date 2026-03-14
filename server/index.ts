@@ -146,4 +146,23 @@ app.use((req, res, next) => {
   server.listen({ port: PORT, host: "0.0.0.0" }, () => {
     log(`OAE Marketing running on port ${PORT}`);
   });
+
+  // Graceful shutdown
+  const shutdown = (signal: string) => {
+    log(`${signal} received — shutting down gracefully`);
+    server.close(() => {
+      pool.end().then(() => {
+        log("Database pool closed");
+        process.exit(0);
+      });
+    });
+    // Force exit after 10 seconds if graceful shutdown stalls
+    setTimeout(() => {
+      console.error("Forced shutdown after timeout");
+      process.exit(1);
+    }, 10_000);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })();

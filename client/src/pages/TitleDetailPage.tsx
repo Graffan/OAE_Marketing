@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, Pencil, Film, Star, ExternalLink } from "lucide-react";
 import { useTitle } from "@/hooks/useTitles";
+import { useCampaigns } from "@/hooks/useCampaigns";
+import { Badge } from "@/components/ui/badge";
+import { Megaphone, Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import TitleDialog from "@/components/TitleDialog";
 import { Button } from "@/components/ui/button";
@@ -39,6 +42,7 @@ export default function TitleDetailPage() {
 
   const { user } = useAuth();
   const { data: title, isLoading } = useTitle(id);
+  const { data: campaigns = [] } = useCampaigns(id ?? undefined);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const canEdit = ["admin", "marketing_operator"].includes(user?.role ?? "");
@@ -296,13 +300,45 @@ export default function TitleDetailPage() {
           </TabsContent>
 
           {/* Campaigns Tab */}
-          <TabsContent value="campaigns" className="flex-1 overflow-auto m-0">
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center px-6">
-              <p className="font-medium text-foreground">Campaigns — Coming in Phase 4</p>
-              <p className="text-sm text-muted-foreground">
-                Campaign management will be available after Phase 4 is complete.
-              </p>
-            </div>
+          <TabsContent value="campaigns" className="flex-1 overflow-auto m-0 p-6">
+            {(campaigns as any[]).length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <Megaphone className="h-8 w-8 text-muted-foreground/20" />
+                <p className="text-sm text-muted-foreground">No campaigns for this title yet</p>
+                {canEdit && (
+                  <Link href="/campaigns">
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-3.5 w-3.5 mr-1.5" />
+                      Create Campaign
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {(campaigns as any[]).map((c: any) => (
+                  <Link key={c.id} href={`/campaigns/${c.id}`}>
+                    <div className="flex items-center gap-4 p-4 rounded-xl border border-border/50 bg-card hover:bg-muted/30 transition-colors cursor-pointer">
+                      <Megaphone className="h-5 w-5 text-rose-500 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium">{c.name}</span>
+                        {c.type && (
+                          <span className="text-xs text-muted-foreground ml-2">{c.type}</span>
+                        )}
+                      </div>
+                      <Badge className={cn(
+                        "text-[10px]",
+                        c.status === "active" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+                        c.status === "draft" && "bg-muted text-muted-foreground",
+                        c.status === "completed" && "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+                      )}>
+                        {c.status}
+                      </Badge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
